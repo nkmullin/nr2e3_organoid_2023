@@ -1,0 +1,314 @@
+---
+title: "nr2e3_wnn"
+author: "Nate Mullin"
+date: "12/12/2022"
+output: html_document
+---
+
+```{r}
+library(Seurat)
+library(Signac)
+library(tidyverse)
+library(ggpubr)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(ggrepel)
+library(RColorBrewer)
+library(scCustomize)
+```
+
+
+###########################################
+#### Run WNN to integrate RNA and ATAC ####
+###########################################
+```{r, fig.width=18, fig.height=6}
+# load CCA output
+load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/cca_03272023/final_object.RData")
+
+# load LSI/Signac output
+load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/lsi_03272023/integrated_final.RData")
+
+CCA_object <- IVR_object.combined
+LSI_object <- integrated
+
+# add correct fragment paths to atac object
+FRAG_PATH1 <- "~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/jobs/S1_B342_D280/outs/atac_fragments.tsv.gz"
+FRAG_PATH2 <- "~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/jobs/S2_B342cor_D280/outs/atac_fragments.tsv.gz"
+FRAG_PATH3 <- "~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_organoid/cellranger_arc_runs/S7_B342_D160_ro/outs/atac_fragments.tsv.gz"
+FRAG_PATH4 <- "~/LSS//IVR/nkmullin/experiments/multiome/nr2e3_d160_organoid/cellranger_arc_runs/S8_B342cor_D160_ro/outs/atac_fragments.tsv.gz"
+
+
+FRAG_PATHS <- c(FRAG_PATH1, FRAG_PATH2, FRAG_PATH3, FRAG_PATH4)
+
+NEW_FRAG_LIST <- vector(length = 4, mode = "list")
+for(i in 1:4){
+  
+  NEW_FRAG_LIST[[i]] <- UpdatePath(object = Fragments(LSI_object[["ATAC"]])[[i]],
+                                   new.path = FRAG_PATHS[i],
+                                   verbose = TRUE)
+}
+
+Fragments(LSI_object[["ATAC"]]) <- NULL
+Fragments(LSI_object[["ATAC"]]) <- NEW_FRAG_LIST
+
+# extract gene annotations from EnsDb
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+seqlevelsStyle(annotations)
+# change to UCSC style
+seqlevelsStyle(annotations) <- 'UCSC'
+
+# add the gene information to the object
+Annotation(LSI_object) <- annotations
+
+# subset objects to only contain common cells that pass ATAC and RNA QC
+CCA_object_subset <- subset(CCA_object, cells = colnames(LSI_object))
+LSI_object_subset <- subset(LSI_object, cells = colnames(CCA_object_subset))
+
+# set default assay
+DefaultAssay(CCA_object_subset) <- "RNA"
+DefaultAssay(LSI_object_subset) <- "ATAC"
+
+
+# compare number of cells in each object
+CCA_object # 30,299 cells
+LSI_object # 20,196  cells
+CCA_object_subset #  16,980 cells
+LSI_object_subset #  16,980 cells
+
+
+```
+
+#########################################################
+###### Create new multimodal object out of subsets ######
+#########################################################
+
+```{r}
+# create a new object with relevant assays
+multimodal_object <- CreateSeuratObject(counts =  CCA_object_subset@assays$RNA@counts,assay = "RNA")
+multimodal_object[["integrated"]] <- CCA_object_subset@assays$integrated
+multimodal_object[["ATAC"]] <- LSI_object_subset[["ATAC"]]
+
+# and metadata
+multimodal_object@meta.data <- LSI_object_subset@meta.data
+multimodal_object[["mito.genes"]] <- CCA_object_subset$mito.genes
+multimodal_object[["ribo.genes"]] <- CCA_object_subset$ribo.genes
+multimodal_object[["dataset"]] <- LSI_object_subset$dataset
+
+# and reductions
+multimodal_object@reductions$integrated_pca <- CCA_object_subset@reductions$pca
+multimodal_object@reductions$integrated_umap <- CCA_object_subset@reductions$umap
+multimodal_object@reductions$integrated_lsi <- LSI_object_subset@reductions$integrated_lsi
+multimodal_object@reductions$lsi_umap <- LSI_object_subset@reductions$umap
+
+# add scaled data
+all.genes <- rownames(multimodal_object)
+multimodal_object <- ScaleData(multimodal_object, features = all.genes, assay = "RNA")
+
+DefaultAssay(multimodal_object) <- "ATAC"
+all.peaks <- rownames(multimodal_object)
+multimodal_object <- ScaleData(multimodal_object, features = all.peaks, assay = "ATAC")
+multimodal_object <- NormalizeData(multimodal_object, assay = "RNA")
+
+
+# run WNN using reductions from RNA and ATAC
+multimodal_object <- FindMultiModalNeighbors(multimodal_object, 
+                                             reduction.list = list("integrated_pca",
+                                                                   "integrated_lsi"), 
+                                             dims.list = list(1:30, 2:50))
+
+# Run UMAP and find clusters in multimodal data
+multimodal_object <- RunUMAP(multimodal_object, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+multimodal_object <- FindClusters(multimodal_object, graph.name = "wsnn", algorithm = 3, verbose = FALSE, resolution = 0.1)
+
+# visualize
+DimPlot(multimodal_object, reduction = "wnn.umap", pt.size = 0.1)
+```
+
+######################################################
+############## ANNOTATION OF WNN OBJECT ##############
+######################################################
+
+```{r}
+# add  annotations for timepoint, line
+line <- ifelse(
+  str_detect(
+    multimodal_object[["dataset"]][["dataset"]], "B342cor"
+    ), "B342cor", "B342")
+
+timepoint <- ifelse(
+  str_detect(
+    multimodal_object[["dataset"]][["dataset"]], "D280"
+    ), "D280", "D160")
+
+multimodal_object[["line"]] <- line
+multimodal_object[["timepoint"]] <- timepoint
+
+# plot outcomes of WNN analysis
+p1 <- DimPlot(multimodal_object, reduction = "integrated_umap", group.by = "wsnn_res.0.1", label = TRUE, label.size = 2.5, repel = TRUE) + ggtitle("RNA")
+p2 <- DimPlot(multimodal_object, reduction = "lsi_umap", group.by = "wsnn_res.0.1", label = TRUE, label.size = 2.5, repel = TRUE) + ggtitle("ATAC")
+p3 <- DimPlot(multimodal_object, reduction = "wnn.umap", group.by = "wsnn_res.0.1", label = TRUE, label.size = 2.5, repel = TRUE) + ggtitle("WNN")
+
+pdf(file = "nr2e3_wnn_triple_03282023.pdf", width = 15, height = 5) 
+p1 + p2 + p3 & NoLegend() & theme(plot.title = element_text(hjust = 0.5))
+dev.off()
+
+donor_wnn_dim <- DimPlot(multimodal_object,shuffle = T, pt.size = 0.1, group.by = "line", reduction = "wnn.umap") + ggtitle("D160 RO Multimodal Seq")
+donor_split_wnn_dim <- DimPlot(multimodal_object,shuffle = T, pt.size = 0.1, split.by  = "line", reduction = "wnn.umap", group.by = "timepoint") + ggtitle("RO Multimodal Seq")
+
+
+pdf(file = "donor_wnn_dimplot_03282023.pdf",   
+    width = 10, 
+    height = 8) 
+donor_wnn_dim 
+dev.off()
+
+pdf(file = "donor_split_wnn_dimplot_03282023.pdf",  
+    width = 10, 
+    height = 5) 
+donor_split_wnn_dim 
+dev.off()
+
+```
+
+```{r}
+save(multimodal_object, file = "multimodal_object_03282023.RData")
+```
+
+
+###########################
+#### MANUAL ANNOTATION ####
+###########################
+
+```{r}
+Idents(multimodal_object) <- "wsnn_res.0.5"
+DefaultAssay(multimodal_object) <- "RNA"
+DimPlot(multimodal_object, reduction = "wnn.umap")
+
+markers <- FindAllMarkers(multimodal_object, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+markers %>%
+    group_by(cluster) %>%
+    top_n(n = 5, wt = avg_log2FC) -> top10
+
+tiff(filename = "wnn_rna_markers.tiff", width = 10, height = 10, units = "in", res = 300)
+DoHeatmap(multimodal_object, features = top10$gene, raster = F) + NoLegend()
+dev.off()
+
+markers %>%
+    group_by(cluster) %>%
+    top_n(n = 2, wt = avg_log2FC) -> top2
+
+tiff(filename = "wnn_rna_markers.tiff", width = 10, height = 10, units = "in", res = 300)
+DoHeatmap(multimodal_object, features = top2$gene, raster = F) + NoLegend()
+dev.off()
+
+
+# look at marker genes
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "RHO", max.cutoff = "q95") # rod
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "ARR3", order = T) # cone
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "PDE6H", order = T) # cone
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "THY1") # RGC
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "NRN1") # RGC
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "VWF") # EC
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "ACTA2", order = T) # Pericyte_SMC
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "NRXN2") # Horizontal?
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "GFAP") # Astrocyte
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "RLBP1")  # Muller
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "C1QA")  # microglia
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "APOE")  # amacrine
+
+## bipolar subclusters from Shekhar et al. PMID: 27565351
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "GRIK1")
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "PRKCA")
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "GRM6")
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "ONECUT2")
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = "ERBB4") ## BC3A
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = c("SOX6", "NFIA"), order = T) ## BC5A (cone on)
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = c("NETO1", "VSX1", "TACR3"), order = T) ## BC2 (cone off)
+FeaturePlot(multimodal_object, reduction = "wnn.umap", features = c("TACR3",  "LHX3", "ZFHX4", "NTNG1"), order = T) ## BC1B (cone off)
+
+```
+
+
+
+
+
+```{r}
+Idents(multimodal_object) <- "wsnn_res.0.1"
+DimPlot(multimodal_object, reduction = "wnn.umap")
+
+levels(multimodal_object)
+
+Stacked_VlnPlot(seurat_object = multimodal_object,features = c("RHO", "ARR3", "RCVRN", "NRL", "OPN1MW"))
+
+new.cluster.ids <- c("Rod",
+"Glia",
+"Cone",
+"Bipolars",
+"Progenitor?",
+"Bipolars",
+"Inner_Retina",
+"Inner_Retina",
+"Inner_Retina",
+"Inner_Retina",
+"Bipolars",
+"Bipolars",
+"Inner_Retina")
+
+names(new.cluster.ids) <- levels(multimodal_object)
+
+multimodal_object <- RenameIdents(multimodal_object, new.cluster.ids)
+multimodal_object$manual_celltype_rough <- Idents(multimodal_object)
+
+DimPlot(multimodal_object, reduction = "wnn.umap", label = TRUE, pt.size = 0.5, group.by = "manual_celltype_rough") + NoLegend()
+
+donor_split_wnn_dim <- DimPlot(multimodal_object,shuffle = T, pt.size = 0.5, split.by  = "line", reduction = "wnn.umap", label = F, ncol = 2) + ggtitle("D160 + D280 RO Multimodal Seq") 
+
+
+wnn_dim <- DimPlot(multimodal_object,shuffle = T, pt.size = 0.5, reduction = "wnn.umap", label = T) + ggtitle("D160 + D280 RO Multimodal Seq") + NoLegend()
+
+time_split_donor_group_wnn_dim <- DimPlot(multimodal_object,shuffle = T, pt.size = 0.5, split.by  = "timepoint", group.by = "line", reduction = "wnn.umap", label = F, ncol = 2) + ggtitle("D160 + D280 RO Multimodal Seq") 
+
+pdf(file = "rough_wnn_dimplot_06162023.pdf",   
+    width = 5, 
+    height = 5)
+wnn_dim 
+dev.off()
+
+pdf(file = "donor_rough_wnn_dimplot_03282023.pdf",  
+    width = 6, 
+    height = 5)
+donor_wnn_dim 
+dev.off()
+
+pdf(file = "donor_rough_split_line_wnn_dimplot_03282023.pdf", 
+    width = 11, 
+    height = 5) 
+donor_split_wnn_dim 
+dev.off()
+
+pdf(file = "time_split_donor_group_wnn_dim_03282023.pdf",  
+    width = 11, 
+    height = 5) 
+time_split_donor_group_wnn_dim 
+dev.off()
+
+# look at final numbers
+table(multimodal_object$manual_celltype_rough, multimodal_object$line)
+
+
+# add the gene activity matrix to the Seurat object as a new assay and normalize it
+gene.activities <- GeneActivity(multimodal_object, assay = "ATAC")
+multimodal_object[['gene_activity']] <- CreateAssayObject(counts = gene.activities)
+ multimodal_object <- NormalizeData(
+   object = multimodal_object,
+   assay = 'gene_activity',
+   normalization.method = 'LogNormalize',
+   scale.factor = median(multimodal_object$nCount_gene_activity)
+ )
+
+save(multimodal_object, file = "multimodal_object_02382023.RData")
+
+
+```
+

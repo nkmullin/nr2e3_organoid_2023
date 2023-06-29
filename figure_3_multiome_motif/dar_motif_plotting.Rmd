@@ -1,0 +1,159 @@
+---
+title: "add_motifs_run_chromvar"
+author: "Nate Mullin"
+date: "03/28/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Signac)
+library(Seurat)
+library(patchwork)
+library(tidyverse)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(SummarizedExperiment)
+library(ggpubr)
+library(cowplot)
+library(JASPAR2022)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(EnhancedVolcano)
+library(ggrepel)
+set.seed(1234)
+```
+
+```{r}
+load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/seurat_downstream/motif/multimodal_object_macs2_peaks_03282023.RData")
+```
+
+
+###############################################################################
+############################ motif enrichment DARs ############################
+###############################################################################
+```{r}
+# set idents and assay
+Idents(multimodal_object) <- "manual_celltype_rough"
+DefaultAssay(multimodal_object) <- "macs2_peaks"
+
+# calculate DA peaks in Rods
+# Positive = Closed in NR2E3-null, open in Control
+# Negative = Open in NR2E3-null, closed in Control - putative repressed sites
+
+# find DA peaks in ctl vs nr2e3-null in ROD only
+rod_da_peaks <- FindMarkers(
+  object = multimodal_object, group.by = "line", subset.ident = c("Rod"),
+  ident.1 = 'B342cor',
+  ident.2 = 'B342',
+  only.pos = FALSE,
+  test.use = 'LR',
+  latent.vars = 'nCount_macs2_peaks'
+)
+
+# write out csv
+write.csv(rod_da_peaks, file = "rod_da_peaks_B342cor_vs_B342.csv")
+
+# read back in csv later
+rod_da_peaks <- read_csv("rod_da_peaks_B342cor_vs_B342.csv")
+rod_da_peaks <- column_to_rownames(rod_da_peaks, var = "...1")
+
+# volcano plot
+pdf(file = "rod_da_peaks_B342cor_vs_B342.pdf", width = 10, height = 10)
+EnhancedVolcano(toptable = rod_da_peaks, 
+                x = "avg_log2FC", y = "p_val_adj", 
+                lab = rownames(rod_da_peaks), pCutoff = 0.05, FCcutoff = 1, drawConnectors = T)
+dev.off()
+```
+
+
+```{r}
+obj <- rod_da_peaks
+obj$delta.pct <- obj$pct.1 - obj$pct.2
+obj$peak <- rownames(obj)
+
+# generate plot of DARs showing logFC and delta.pct for each peak (DAR)
+dpct_fc_plot <- ggplot(obj, aes(delta.pct, avg_log2FC)) + 
+  geom_point(color = "#bdbdbd", alpha=I(0.01)) +
+  geom_point(data=subset(obj, pct.1 > 0.1 & avg_log2FC > 0 & p_val_adj < 0.05),
+             aes(delta.pct,avg_log2FC,label = peak), color = "#b2182b",alpha=I(0.5)) + 
+  geom_point(data=subset(obj, pct.2 > 0.1 & avg_log2FC < 0 & p_val_adj < 0.05),
+             aes(delta.pct,avg_log2FC,label = peak), color  = "#2166ac",alpha=I(0.5)) + 
+  labs(x = "∆ Percent Expressed", y = "Log2 Fold Change", title = "Rod") +
+  theme(plot.title = element_text(hjust = 0.5)) + theme_bw() 
+
+# print logfc/dpct plot
+tiff(file = "rod_dar_used_in_motif_adjp05_pct0.1.tiff", width = 5, height = 5, res = 300, units = "in")
+dpct_fc_plot
+dev.off()
+
+```
+
+
+```{r}
+# subset out only significant DARs based on adj. p value and % cells with peak (10% cutoff)
+sig_adj_rod_da_peaks <- subset(rod_da_peaks, p_val_adj < 0.05)
+sig_adj_rod_da_peaks <- subset(sig_adj_rod_da_peaks, pct.1 > 0.1 |pct.2 > 0.1 )
+
+# split into pos and neg DARs
+pos_peaks <- rownames(sig_adj_rod_da_peaks[sig_adj_rod_da_peaks$avg_log2FC > 0,])
+neg_peaks <- rownames(sig_adj_rod_da_peaks[sig_adj_rod_da_peaks$avg_log2FC < 0,])
+
+# match the overall GC content in the peak set
+multimodal_object <- RegionStats(multimodal_object, genome = BSgenome.Hsapiens.UCSC.hg38)
+open.peaks <- AccessiblePeaks(multimodal_object, idents = c("Rod"))
+meta.feature <- GetAssayData(multimodal_object, assay = "macs2_peaks", slot = "meta.features")
+
+# background matched peak set for open peaks
+pos.peaks.matched <- MatchRegionStats(
+  meta.feature = meta.feature[open.peaks, ],
+  query.feature = meta.feature[pos_peaks, ],
+  n = 50000
+)
+
+# find motifs in open peaks
+open_b342cor_motif <- FindMotifs(
+  object = multimodal_object,
+  features = pos_peaks, 
+  background = pos.peaks.matched
+)
+
+# background matched peak set for closed peaks
+neg.peaks.matched <- MatchRegionStats(
+  meta.feature = meta.feature[open.peaks, ],
+  query.feature = meta.feature[neg_peaks, ],
+  n = 50000
+)
+
+# find motifs in closed peaks
+open_b342_motif <- FindMotifs(
+  object = multimodal_object,
+  features = neg_peaks, 
+  background = neg.peaks.matched
+)
+
+```
+
+```{r}
+# plot the motifs enriched in peaks differentially accessibly in isogenic control
+# highlight NRL and NR2E3 motifs
+
+highlight <- dplyr::filter(open_b342cor_motif, motif.name %in% c("NRL", "Nr2e3"))
+
+open_b342cor_motif_plot <- ggplot(data=open_b342cor_motif, 
+                                  aes(x=fold.enrichment, y=-log10(p.adjust), label=motif.name)) +
+        geom_point() + 
+        theme_minimal() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_point(data=highlight, 
+             aes(x=fold.enrichment,y=-log10(p.adjust)), 
+             color='red') +
+        geom_label_repel(data = highlight, box.padding = 0.5, max.overlaps = 10, fill = "white") +
+  labs(title = "Enriched Motifs in CLOSED Peaks in NR2E3-null", x = "Fold Enrichment over Background") 
+
+# print plot
+pdf(file = "b342_motif_open_closed.pdf", width = 5, height = 5)
+ggarrange(open_b342cor_motif_plot, ncol = 1, nrow = 1)
+dev.off()
+```
