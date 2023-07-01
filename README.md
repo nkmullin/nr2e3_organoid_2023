@@ -1,12 +1,10 @@
 # nr2e3_organoid_2023
 
-# Loss of NR2E3 disrupts rod photoreceptor cell maturation causing a fate
-switch late in human retinal development.
+# Loss of NR2E3 disrupts rod photoreceptor cell maturation causing a fate switch late in human retinal development.
 code associated with Mullin, Bohrer, et al. 2023 (pending bioRxiv)
 
 <b>TITLE:</b></p>
-Loss of NR2E3 disrupts rod photoreceptor cell maturation causing a fate <br>
-switch late in human retinal development.
+Loss of NR2E3 disrupts rod photoreceptor cell maturation causing a fate switch late in human retinal development.
  
 <b>ABSTRACT:</b></p>
 While dysfunction and death of light-detecting photoreceptor cells underlie most inherited retinal
