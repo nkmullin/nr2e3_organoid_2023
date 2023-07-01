@@ -5,7 +5,7 @@ switch late in human retinal development.
 code associated with Mullin, Bohrer, et al. 2023 (pending bioRxiv)
 
 <b>TITLE:</b></p>
-Loss of NR2E3 disrupts rod photoreceptor cell maturation causing a fate \n
+Loss of NR2E3 disrupts rod photoreceptor cell maturation causing a fate <br>
 switch late in human retinal development.
  
 <b>ABSTRACT:</b></p>
