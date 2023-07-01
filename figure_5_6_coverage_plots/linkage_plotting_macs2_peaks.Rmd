@@ -1,0 +1,203 @@
+---
+title: "linkage"
+author: "Nate Mullin"
+date: "12/14/2022"
+output: html_document
+---
+
+```{r}
+library(Seurat)
+library(Signac)
+library(tidyverse)
+library(ggpubr)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(ggrepel)
+library(RColorBrewer)
+library(scCustomize)
+```
+
+```{r}
+# load the annotated multimodal object
+load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/seurat_downstream/motif/multimodal_object_macs2_peaks_03282023.RData")
+
+
+DimPlot(multimodal_object, reduction = "wnn.umap")
+
+```
+  
+```{r}
+DefaultAssay(multimodal_object) <- "macs2_peaks"
+multimodal_object <- RegionStats(multimodal_object, genome = BSgenome.Hsapiens.UCSC.hg38)
+
+# create a phototransduction module based on KEGG (human)
+rod_pt_module <- c("GRK1", "GRK7", #RK
+                   "RCVRN", #Rec
+                   "RHO", #Rh
+                   "SAG", #Arr
+                   "GNAT1", "GNAT2", "GNB1", "GNGT1", #Gt
+                   "RGS9", #RGS9
+                   "PDE6A", "PDE6G", "PDE6B", "PDE6H",#PDE
+                   "GUCY2F", "GUCY2D", #GC
+                   "GUCA1A", "GUCA1B", "GUCA1C", #GCAP
+                   "SLC24A1", # NCKX
+                   "CALML6", "CALML5", "CALM1", "CALM2", "CALM3", "CALML3", "CALML4", #CaM
+                   "CNGB1", "CNGA1" #CNG
+                   )
+
+
+multimodal_object <- LinkPeaks(
+  object = multimodal_object, 
+  peak.assay = "macs2_peaks",
+  expression.assay = "RNA",
+  genes.use = "VHL", distance = 10e+05)
+
+save(file = "multimodal_object_with_phototrans_gene_mac2_links.RData", multimodal_object)
+```
+
+
+
+
+```{r}
+
+rod_pt_module[1]
+
+multimodal_object$nCount_macs2_peaks <-  multimodal_object_macs$nCount_macs2_peaks
+
+RodCovPlotter <- function(gene) {
+
+  plot <- CoveragePlot(
+                      object = multimodal_object,
+                      region = gene,
+                      features = gene, assay = "macs2_peaks",
+                      expression.assay = "RNA", group.by = "manual_celltype_rough",
+                      extend.upstream = 10000,
+                      extend.downstream = 10000, links = T)
+      
+  pdf(file = paste0("phototransduction_genes_macs_peaks/", gene, "_cov_plot_cell_type.pdf"), width = 8, height = 5)
+  print(plot)
+  dev.off()
+      
+      
+  plot <- CoveragePlot(
+                      object = subset(multimodal_object,manual_celltype_rough == "Rod"),
+                      region = gene,
+                      features = gene, assay = "macs2_peaks",
+                      expression.assay = "RNA", group.by = "line",
+                      extend.upstream = 10000,
+                      extend.downstream = 10000, links = T)
+      
+  pdf(file = paste0("phototransduction_genes_macs_peaks/", gene,"_cov_plot_by_line.pdf"), width = 8, height = 5)
+  print(plot)
+  dev.off()
+  }
+
+for (i in rod_pt_module) {
+ RodCovPlotter("VHL")
+} 
+
+```
+  
+  
+```{r}
+
+paper_module <- c("RHO", "PDE6H", "GNAT1")
+paper_module[1]
+
+
+
+multimodal_object <- LinkPeaks(
+  object = multimodal_object, 
+  peak.assay = "macs2_peaks",
+  expression.assay = "RNA",
+  genes.use = paper_module, distance = 10e+05)
+
+RodCovPlotter(paper_module[1])
+
+RodCovPlotter <- function(gene) {
+
+  nr2e3_null_plot <- CoveragePlot(
+                      object = multimodal_object,
+                      region = gene,
+                      features = gene, assay = "macs2_peaks",
+                      expression.assay = "RNA", group.by = "manual_celltype_rough", split.by = "line",
+                      extend.upstream = 10000,
+                      extend.downstream = 10000)
+  
+  iso_ctl_plot <- CoveragePlot(
+                      object = subset(multimodal_object, line == "B342cor"),
+                      region = gene,
+                      features = gene, assay = "macs2_peaks",
+                      expression.assay = "RNA", group.by = "manual_celltype_rough",
+                      extend.upstream = 10000,
+                      extend.downstream = 10000)
+  
+  all_sample_plot <- CoveragePlot(
+                      object = multimodal_object,
+                      region = gene,
+                      features = gene, assay = "macs2_peaks",
+                      expression.assay = "RNA", group.by = "manual_celltype_rough",
+                      extend.upstream = 10000,
+                      extend.downstream = 10000, links = T)
+      
+  pdf(file = paste0("paper_module/", gene, "_nr2e3_null_plot.pdf"), width = 8, height = 5)
+  print(nr2e3_null_plot)
+  dev.off()
+  
+  pdf(file = paste0("paper_module/", gene, "_iso_ctl_plot.pdf"), width = 8, height = 5)
+  print(iso_ctl_plot)
+  dev.off()
+  
+  pdf(file = paste0("paper_module/", gene, "_all_sample_plot.pdf"), width = 8, height = 5)
+  print(all_sample_plot)
+  dev.off()
+
+      
+      
+  rod_split <- CoveragePlot(
+                      object = subset(multimodal_object,manual_celltype_rough == "Rod"),
+                      region = gene,
+                      features = gene, assay = "macs2_peaks",
+                      expression.assay = "RNA", group.by = "line",
+                      extend.upstream = 10000,
+                      extend.downstream = 10000, links = T)
+      
+  pdf(file = paste0("paper_module/", gene,"_rod_split.pdf"), width = 8, height = 5)
+  print(rod_split)
+  dev.off()
+  }
+
+for (i in paper_module) {
+ RodCovPlotter(i)
+} 
+
+
+nr2e3_null_plot
+iso_ctl_plot
+all_sample_plot
+```
+  
+  
+```{r}
+
+RodCovPlotter <- function(gene) {
+
+  split_line_all <- CoveragePlot(
+                      object = multimodal_object,
+                      region = gene,
+                      features = gene, assay = "macs2_peaks",
+                      expression.assay = "RNA", group.by = "manual_celltype_rough", split.by = "line",
+                      extend.upstream = 10000,
+                      extend.downstream = 10000)
+      
+  pdf(file = paste0("paper_module/", gene, "split_line_all.pdf"), width = 8, height = 5)
+  print(split_line_all)
+  dev.off()
+  }
+
+for (i in paper_module) {
+ RodCovPlotter(i)
+} 
+```
+  
+  

@@ -1,0 +1,87 @@
+---
+title: "organoid_composition"
+author: "Nate Mullin"
+date: "9/30/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(tidyverse)
+library(EnhancedVolcano)
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+library(ggcorrplot)
+
+set.seed(1234)
+
+```
+
+
+
+
+```{r}
+load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+DimPlot(organoid_prc_lineage)
+```
+
+```{r}
+# fix order of levels
+levels(organoid_prc_lineage$celltype_PHATEann)
+
+organoid_prc_lineage$celltype_PHATEann <- factor(x = organoid_prc_lineage$celltype_PHATEann, 
+  levels = c("Progenitors","T1","T3","eRod", "imRod", "Rod", "DivRod"))
+
+
+# plot counts
+cell_counts <- as.data.frame(table(organoid_prc_lineage$celltype_PHATEann, organoid_prc_lineage$line, organoid_prc_lineage$timepoint))
+cell_counts <- as_tibble(cell_counts)
+cell_counts
+cell_counts <- cell_counts %>% dplyr::filter(Var3 != "D0")
+cell_props <- cell_counts %>%
+              group_by(Var2, Var3) %>%
+              mutate(prop = Freq/sum(Freq)*100)
+
+cell_props
+
+ct <- levels(cell_props$Var1)
+output_plots <- list()
+for (i in ct) { 
+  output_plots[[i]] <- cell_props %>% 
+                        dplyr::filter(Var1 == i) %>% 
+                        ggplot(aes(x=Var3, y=prop, group=Var2)) +
+                        geom_line(aes(color=Var2, alpha = 0.5))+
+                        geom_point()+
+                        ggtitle(i) + xlab(label = "timepoint") + ylab(label = "proportion") + 
+                        theme_half_open()
+}
+
+write.csv(cell_props, file = "prc_lin_phate_cell_props.csv")
+
+pdf("prc_lin_phate_cell_type_by_time.pdf", width=12, height=16)
+ggarrange(plotlist = output_plots,
+          common.legend = T, legend = "right", ncol = 3, nrow = 6)
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,301 @@
+---
+title: "nr2e3_cluster_anotation_09302022"
+author: "Nate Mullin"
+date: "9/30/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(tidyverse)
+library(EnhancedVolcano)n
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+library(scCustomize)
+# BiocManager::install('ComplexHeatmap')
+
+set.seed(1234)
+
+```
+
+#################################################################################
+###################### LOAD CCA OBJECT AND ADD METADATA #########################
+#################################################################################
+
+```{r fig.width=20, fig.height=8}
+# load the object using 25 PCA dimensions for UMAP and with stringent filtering
+  # stuff called "stringent" before 28 JULY was actually NOT!!
+load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/cca_stringent_25dims_noIPSC_09302022/final_object.RData")
+
+# rename object
+organoid_all_tp <- IVR_object.combined
+
+# look at counts
+## lower counts in D0.. losing cells through feature cutoff. Look into...
+table(organoid_all_tp$orig.ident)
+
+# break out metadata
+timepoint <- ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D0"
+    ), "D0", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D40"
+    ), "D40", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D80"
+    ), "D80", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D120"
+    ), "D120", "D160"))))
+
+line <- ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "B342cor"
+    ), "B342cor", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "B1427"
+    ), "B1427", "B342"))
+
+organoid_all_tp[["timepoint"]] <- timepoint
+organoid_all_tp[["line"]] <- line
+
+# re-order factors
+organoid_all_tp$timepoint <- factor(organoid_all_tp$timepoint, levels = c("D0", "D40", "D80", "D120", "D160"))
+organoid_all_tp$line <- factor(organoid_all_tp$line, levels = c("B342", "B342cor", "B1427"))
+
+# save object with metadata
+save(organoid_all_tp, file = "organoid_all_tp.RData")
+
+# print the unannotated UMAP split by line and timepoint
+pdf("unannotated_umaps.pdf", width=15, height=5)
+combo <- DimPlot(organoid_all_tp, shuffle = T, pt.size = 0.05)
+time<-DimPlot(organoid_all_tp, group.by = "timepoint", shuffle = T, pt.size = 0.05)
+line<-DimPlot(organoid_all_tp, group.by = "line", shuffle = T, pt.size = 0.05)
+ggarrange(combo, time, line, nrow = 1, ncol = 3)
+dev.off()
+```
+
+#################################################################################
+############################### Reference Mapping ###############################
+#################################################################################
+
+load ref data set - use Sridhar et al (Reh Lab)
+```{r}
+fetal_cca_59_82cP_125cp_res1.5_Glia <- readRDS("~/LSS/IVR/apvoigt/experiments/sc-rna-seq/ipsc_robot/sridhar_data/uw_objects/fetal_cca_59_82cP_125cp_res1.5_Glia.RDS")
+```
+
+For a first pass, try using the Reh Lab "fetal_cca_59_82cP_125cp_res1.5_Glia" dataset
+```{r fig.width=15, fig.height=5}
+DefaultAssay(organoid_all_tp) <- "RNA"
+common.features <- intersect(rownames(organoid_all_tp), rownames(fetal_cca_59_82cP_125cp_res1.5_Glia))
+length(x = common.features)
+
+anchors <- FindTransferAnchors(reference = fetal_cca_59_82cP_125cp_res1.5_Glia, query = organoid_all_tp,
+    dims = 1:30, reference.reduction = "pca", features = common.features, reduction = "pcaproject")
+
+predictions <- TransferData(anchorset = anchors, refdata = fetal_cca_59_82cP_125cp_res1.5_Glia$type,
+    dims = 1:30)
+
+organoid_all_tp <- AddMetaData(organoid_all_tp, metadata = predictions)
+Idents(organoid_all_tp) <- 'predicted.id'
+
+pdf("sridhar_pred_score_stringent.pdf", width=5, height=5)
+FeaturePlot(organoid_all_tp, features =  "prediction.score.max")
+dev.off()
+
+# set really low prediction score cutoff ie zero!
+organoid_all_tp$sridhar_draft_celltype <- ifelse(organoid_all_tp$prediction.score.max > 0, organoid_all_tp$predicted.id, NA)
+
+Idents(organoid_all_tp) <- 'sridhar_draft_celltype'
+
+pdf("dimplot_stringent_draft_annotation.pdf", width=5, height=5)
+DimPlot(organoid_all_tp, reduction = "umap", shuffle = F, label = T, group.by = "sridhar_draft_celltype", ncol = 1) + NoLegend()
+dev.off()
+
+save(organoid_all_tp, file = "organoid_all_tp.RData")
+```
+
+
+####################################################################################
+############################ REFINE CLUSTER ANNOTATION  ############################
+####################################################################################
+
+```{r fig.width=10, fig.height=10}
+# focus on photoreceptors
+Idents(organoid_all_tp) <- "sridhar_draft_celltype"
+DefaultAssay(organoid_all_tp) <- "RNA"
+
+# add scaled RNA assay
+all.genes <- rownames(organoid_all_tp)
+organoid_all_tp <- ScaleData(organoid_all_tp, features = all.genes, assay = "RNA")
+
+
+# merge photo/progen with photoreceptors
+organoid_all_tp <- RenameIdents(organoid_all_tp, "Photo/Progen" = "Photoreceptors")
+
+organoid_all_tp$sridhar_draft_celltype_merge_prc <- organoid_all_tp@active.ident # create new metadata column
+
+# look for subclusters
+Idents(organoid_all_tp) <- "sridhar_draft_celltype_merge_prc"
+organoid_all_tp <- FindSubCluster(organoid_all_tp, cluster = c("Photoreceptors"), graph.name = "integrated_nn", algorithm = 3, resolution = 0.5)
+Idents(organoid_all_tp) <- "sub.cluster"
+DimPlot(organoid_all_tp, reduction = "umap", label = T)
+VlnPlot(organoid_all_tp, features = c("RHO", "NR2E3", "OPN1SW", "NRL"), ncol = 1)
+
+
+pdf("dimplot_prc_subcluster_annotation.pdf", width=10, height=10)
+DimPlot(organoid_all_tp, reduction = "umap", label = T, shuffle = T)+ NoLegend()
+dev.off() 
+
+table(organoid_all_tp$sub.cluster, organoid_all_tp$line, organoid_all_tp$timepoint)
+
+# make a list of genes involved in rod/cone development
+photoreceptor_genes <- c("ARR3", "GUCA1C","PDE6C", "PDE6H", #CONES
+                         "GNGT1", "CNGB1", 'GNAT1', "RHO", "RPGR", "CEP290", "NRL", #RODS
+                         "RCVRN", #BOTH
+                         "ATOH7", "PRDM1", "VSX2", "CRX" ,"OTX2")
+
+# Downsample the clusters to a maximum of 500 cells each (makes the heatmap easier to see for small clusters)
+organoid_all_tp.small <- subset(organoid_all_tp, downsample = 500)
+
+pdf("photoreceptor_subcluster_heatmap.pdf", width=20, height=5)
+DoHeatmap(organoid_all_tp.small, features = photoreceptor_genes, label = F, group.by = "sub.cluster", assay = "RNA", raster = F)
+dev.off()
+```
+
+
+# rename PRC clusters
+```{r, fig.width=15, fig.height=5}
+levels(organoid_all_tp)
+
+new.cluster.ids <-c("T3"                ,"T1/RGC"            ,"Progenitors"       ,"T1"               ,
+"Cone"  ,"Rod"  ,"RGC"               ,"HC"               ,
+"T2"                ,"AC"                ,"Cone"  ,"Early Glia"       ,
+"imGlia"            ,"Cone"  ,"Cone"  ,"Unknown" ,
+"Unknown" ,"Unknown"  ,"Unknown" ,"Unknown",
+"Glia"              ,"Rod"  ,"Unknown" ,"T2/T3"            ,
+"Bipolars"          ,"Rod"  ,"Rod"  ,"Unknown",
+"Unknown" ,"Unknown")
+
+names(new.cluster.ids) <- levels(organoid_all_tp)
+
+organoid_all_tp <- RenameIdents(organoid_all_tp, new.cluster.ids)
+organoid_all_tp$draft_celltype_v2 <-  Idents(organoid_all_tp)
+
+# add cool colors
+levels(organoid_all_tp)
+my_cols <- c(brewer.pal(n = 10, name = "Paired"), brewer.pal(n = 10, name = "Dark2"))
+
+pdf("dimplot_draft_v2_clusters.pdf", width=10, height=10)
+DimPlot(organoid_all_tp, label = T, group.by = "draft_celltype_v2", pt.size = 0.1, shuffle = T, cols = my_cols) + NoLegend()
+dev.off()
+
+pdf("dimplot_draft_v2_clusters_by_timepoint.pdf", width=20, height=5)
+DimPlot(organoid_all_tp, label = T, group.by = "draft_celltype_v2", split.by = "timepoint", pt.size = 0.1, cols = my_cols) + NoLegend()
+dev.off()
+
+pdf("dimplot_draft_v2_clusters_by_line.pdf", width=12, height=5)
+DimPlot(organoid_all_tp, label = T, group.by = "draft_celltype_v2", split.by = "line", pt.size = 0.1, cols = my_cols) + NoLegend() + NoAxes()
+dev.off()
+
+save(organoid_all_tp, file = "organoid_all_tp.RData")
+```
+
+
+# PLOT NR2E3 NRL RHO
+
+```{r}
+DefaultAssay(organoid_all_tp) <- "RNA"
+
+organoid_all_tp$line <- factor(x = organoid_all_tp$line, levels = c("B1427", "B342", "B342cor")) # change the order of the factor levels
+
+pdf("nrl_nr2e3_rho_by_line.pdf", width=10, height=10)
+FeaturePlot_scCustom(organoid_all_tp, label = F, features = c("NRL", "NR2E3", "RHO"), split.by = "line", pt.size = 0.1, colors_use = viridis_dark_high) & NoLegend() & Blank_Theme()
+dev.off()
+
+FeaturePlot_scCustom(organoid_all_tp, label = F, features = c("NRL"), pt.size = 0.1, colors_use = viridis_dark_high)
+
+
+Cluster_Highlight_Plot(seurat_object = organoid_all_tp, cluster_name = "Rod", highlight_color = "navy",
+    background_color = "lightgray")
+
+plot(viridis_dark_high)
+
+pdf("viridis.pdf", width=5, height=2)
+n = 200
+image(
+  1:n, 1, as.matrix(1:n),
+  col = viridis(n, option = "D"),
+  xlab = "", ylab = "", xaxt = "n", yaxt = "n", bty = "n"
+)
+dev.off()
+
+
+# plot opsins
+pdf("opsin_genes_by_line.pdf", width=15, height=25)
+FeaturePlot_scCustom(organoid_all_tp, label = F, features = c("RHO", "OPN1SW", "OPN1MW", "OPN1LW", "OPN4"), split.by = "line", pt.size = 0.1) & NoLegend() & NoAxes()
+dev.off()
+
+pdf("nrl_nr2e3_rho_by_line_density.pdf", width=15, height=5)
+Plot_Density_Custom(seurat_object = subset(organoid_all_tp,line == "B342"), features = c("NRL", "NR2E3", "RHO"), pt.size = 0.1) & NoLegend() & NoAxes()
+dev.off()
+
+pdf("nrl_syndig1_rho_by_line_density.pdf", width=15, height=5)
+FeaturePlot(organoid_prc_lineage, features = c("NRL", "SYNDIG1"), pt.size = 0.1, reduction = "PHATE", blend = T) & NoLegend() & NoAxes()
+dev.off()
+
+DefaultAssay(organoid_prc_lineage) <- 
+pdf("syndig1vln.pdf", width=10, height=5)
+VlnPlot_scCustom(seurat_object = organoid_prc_lineage, features = c("SYNDIG1"), pt.size = 0, idents = c("Rod", "Cone", "DivRod"), split.by  = "celltype_PHATEann", group.by = "line")
+dev.off()
+
+VlnPlot_scCustom(seurat_object = organoid_prc_lineage, features = c("SYNDIG1"), idents = c("Rod", "Cone", "DivRod"), )
+
+
+p <- FeaturePlot(organoid_all_tp, label = F, features = c("NRL", "NR2E3", "RHO"), split.by = "line", pt.size = 0.1, combine = F)
+
+p
+
+for(i in 1:length(p)) {
+  p[[i]] <- p[[i]] + NoLegend() + NoAxes()
+}
+
+```
+
+```{r}
+levels(organoid_all_tp$draft_celltype_v2)
+organoid_all_tp$draft_celltype_v2 <- factor(organoid_all_tp$draft_celltype_v2, levels = rev(c("Progenitors", "T1", "T1/RGC", "T2", "T2/T3", "T3", "Early Glia", "imGlia", "Glia", "AC", "HC", "RGC", "Cone", "Rod", "Bipolars", "Unknown")))
+```
+
+
+# DOT PLOT OF MARKER GENES
+```{r}
+
+
+Idents(organoid_all_tp) <- "draft_celltype_v2"
+
+marker.genes <- c("SOX2", "ATOH7", "NEFL", "PRDM13", "FABP7",
+                  "SLC1A3", "TFAP2A","ONECUT2", "RBPMS",
+                  "PDE6H", "NRL", "VSX1")
+pdf(file = "marker_dot.pdf", width = 7, height = 5)
+DotPlot_scCustom(seurat_object = organoid_all_tp, 
+                  features = marker.genes,  x_lab_rotate = TRUE, colors_use = viridis_light_high)
+dev.off()
+
+pdf(file = "marker_feat.pdf", width = 12, height = 9)
+Plot_Density_Custom(seurat_object = organoid_all_tp, features = marker.genes) & NoAxes() & NoLegend()
+dev.off()
+```
+
+
+
+
+
+
+
+
+

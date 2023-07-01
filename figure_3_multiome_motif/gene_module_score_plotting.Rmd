@@ -1,0 +1,206 @@
+---
+title: "div_rod_module"
+author: "Nate Mullin"
+date: "12/14/2022"
+output: html_document
+---
+
+```{r}
+library(Seurat)
+library(Signac)
+library(tidyverse)
+library(ggpubr)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(ggrepel)
+library(RColorBrewer)
+library(scCustomize)
+```
+
+```{r}
+# load the annotated multimodal object
+load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/seurat_downstream/wnn_analysis/multimodal_object_02382023.RData")
+
+# load the annotated (PHATE) scRNAseq object
+load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+
+DimPlot(multimodal_object)
+DimPlot(organoid_prc_lineage)
+
+```
+  
+CREATE DIVROD MODULE
+```{r}
+
+DefaultAssay(organoid_prc_lineage) <- "RNA"
+
+divrod_enriched <- FindMarkers(organoid_prc_lineage, ident.1 = "DivRod", verbose = FALSE, min.diff.pct = 0.25) %>%
+  arrange(-avg_log2FC) %>%
+  rownames_to_column(var = "gene") %>%
+  pull(gene) %>% 
+  .[1:25]
+
+rod_enriched <- FindMarkers(organoid_prc_lineage, ident.1 = "Rod", verbose = FALSE, min.diff.pct = 0.25) %>%
+  arrange(-avg_log2FC) %>%
+  rownames_to_column(var = "gene") %>%
+  pull(gene) %>% 
+  .[1:25]
+
+cone_enriched <- FindMarkers(organoid_prc_lineage, ident.1 = "Cone", verbose = FALSE, min.diff.pct = 0.25) %>%
+  arrange(-avg_log2FC) %>%
+  rownames_to_column(var = "gene") %>%
+  pull(gene) %>% 
+  .[1:25]
+
+divrod_enriched
+rod_enriched
+cone_enriched
+
+df_x <- as.data.frame(divrod_enriched)
+df <-  as.data.frame(divrod_enriched) %>% mutate(rod_enriched) %>%  mutate(cone_enriched)
+
+
+DefaultAssay(multimodal_object) <- "RNA"
+multimodal_object <- AddModuleScore(multimodal_object,
+                       features = list(divrod_enriched),
+                        name="divrod_enriched")
+
+multimodal_object <- AddModuleScore(multimodal_object,
+                       features = list(rod_enriched),
+                        name="rod_enriched")
+
+multimodal_object <- AddModuleScore(multimodal_object,
+                       features = list(cone_enriched),
+                        name="cone_enriched")
+
+
+DefaultAssay(organoid_prc_lineage) <- "RNA"
+organoid_prc_lineage <- AddModuleScore(organoid_prc_lineage,
+                       features = list(divrod_enriched),
+                        name="divrod_enriched")
+
+organoid_prc_lineage <- AddModuleScore(organoid_prc_lineage,
+                       features = list(rod_enriched),
+                        name="rod_enriched")
+
+organoid_prc_lineage <- AddModuleScore(organoid_prc_lineage,
+                       features = list(cone_enriched),
+                        name="cone_enriched")
+
+```
+
+
+```{r}
+
+# Plot scores
+divrod <- FeaturePlot(multimodal_object,
+            features = "divrod_enriched1", label = F, repel = TRUE, 
+            reduction = "wnn.umap", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T) &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+
+rod <- FeaturePlot(multimodal_object,
+            features = "rod_enriched1", label = F, repel = TRUE, 
+            reduction = "wnn.umap", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T) &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+
+cone <- FeaturePlot(multimodal_object,
+            features = "cone_enriched1", label = F, repel = TRUE, 
+            reduction = "wnn.umap", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T) &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) 
+
+
+divrod_vln <- VlnPlot(multimodal_object, features = "divrod_enriched1", 
+                      split.by = "line", split.plot = T, pt.size = 0)
+rod_vln <- VlnPlot(multimodal_object, features = "rod_enriched1", 
+                   split.by = "line", split.plot = T, pt.size = 0)
+cone_vln <- VlnPlot(multimodal_object, features = "cone_enriched1", 
+                    split.by = "line", split.plot = T, pt.size = 0)
+
+divrod_vln
+
+pdf(file = "prc_module_enrichment_multiome.pdf", width = 20, height = 15)
+ggarrange(cone, cone_vln, 
+          rod, rod_vln, 
+          divrod, divrod_vln,
+          nrow = 3, ncol = 2)
+dev.off()
+
+
+###
+
+divrod <- FeaturePlot(organoid_prc_lineage,
+            features = "divrod_enriched1", label = F, repel = TRUE, 
+            reduction = "PHATE", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T) & xlim(-0.03,0.05) & ylim(-0.025, 0.025) &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) 
+
+rod <- FeaturePlot(organoid_prc_lineage,
+            features = "rod_enriched1",label = F, repel = TRUE, 
+            reduction = "PHATE", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T) & xlim(-0.03,0.05) & ylim(-0.025, 0.025) &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) 
+
+cone <- FeaturePlot(organoid_prc_lineage,
+            features = "cone_enriched1", label = F, repel = TRUE, 
+            reduction = "PHATE", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T) & xlim(-0.03,0.05) & ylim(-0.025, 0.025) &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) 
+
+
+divrod_vln <- VlnPlot(organoid_prc_lineage, features = "divrod_enriched1", 
+                   split.by = "line", split.plot = T, pt.size = 0)
+rod_vln <- VlnPlot(organoid_prc_lineage, features = "rod_enriched1", 
+                   split.by = "line", split.plot = T, pt.size = 0)
+cone_vln <- VlnPlot(organoid_prc_lineage, features = "cone_enriched1", 
+                   split.by = "line", split.plot = T, pt.size = 0)
+
+
+pdf(file = "prc_module_enrichment_phate_gex.pdf", width = 30, height = 15)
+ggarrange(cone, cone_vln, 
+          rod, rod_vln, 
+          divrod, divrod_vln,
+          nrow = 3, ncol = 2)
+dev.off()
+
+####
+
+divrod <- FeaturePlot(organoid_prc_lineage,
+            features = "divrod_enriched1", label = F, repel = TRUE, 
+            reduction = "umap", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T) &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) 
+
+rod <- FeaturePlot(organoid_prc_lineage,
+            features = "rod_enriched1",label = F, repel = TRUE, 
+            reduction = "umap", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T)  &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) 
+
+cone <- FeaturePlot(organoid_prc_lineage,
+            features = "cone_enriched1", label = F, repel = TRUE, 
+            reduction = "umap", split.by = "line", max.cutoff = "q99", 
+            min.cutoff = "q01", pt.size = 2, raster = T)  &
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu"))) 
+
+
+divrod_vln <- VlnPlot(organoid_prc_lineage, features = "divrod_enriched1", 
+                   split.by = "line", split.plot = T, pt.size = 0, group.by = "draft_celltype_v2")
+rod_vln <- VlnPlot(organoid_prc_lineage, features = "rod_enriched1", 
+                   split.by = "line", split.plot = T, pt.size = 0, group.by = "draft_celltype_v2")
+cone_vln <- VlnPlot(organoid_prc_lineage, features = "cone_enriched1", 
+                   split.by = "line", split.plot = T, pt.size = 0, group.by = "draft_celltype_v2")
+
+
+pdf(file = "prc_module_enrichment_umap_gex.pdf", width = 30, height = 15)
+ggarrange(cone, cone_vln, 
+          rod, rod_vln, 
+          divrod, divrod_vln,
+          nrow = 3, ncol = 2)
+dev.off()
+
+```
+   
+   
