@@ -16,7 +16,7 @@ library(phateR)
 library(ggplot2)
 library(readr)
 library(viridis)
-#library(Rmagic)
+library(Rmagic)
 library(slingshot)
 library(cowplot)
 library(ggpubr)
@@ -34,8 +34,8 @@ set.seed(1234)
 ```
 
 ```{r}
- load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/fitGAM_obj.RData")
- load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+ load(".../phate_pseudotime_trajectory/fitGAM_obj.RData")
+ load(".../phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
 ```
 
 

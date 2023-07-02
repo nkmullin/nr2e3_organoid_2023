@@ -19,7 +19,7 @@ library(scCustomize)
 
 ```{r}
 # load the annotated multimodal object
-load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/seurat_downstream/motif/multimodal_object_macs2_peaks_03282023.RData")
+load(".../motif/multimodal_object_macs2_peaks_03282023.RData")
 
 
 DimPlot(multimodal_object, reduction = "wnn.umap")
@@ -100,7 +100,7 @@ for (i in rod_pt_module) {
   
   
 ```{r}
-
+## Re-generate plots with split coverage by sample for all cell types.
 paper_module <- c("RHO", "PDE6H", "GNAT1")
 paper_module[1]
 

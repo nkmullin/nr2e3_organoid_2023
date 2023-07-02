@@ -1,0 +1,77 @@
+---
+title: "Untitled"
+author: "Nate Mullin"
+date: "2023-01-28"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+
+all_dge_merged <- read_csv("...L/integrated_data/2023_01_28_all_dge_merged.csv")
+```
+
+```{r}
+all_dge_merged
+
+X2023_01_28_d160_rod_vs_d170_rod_dge <- read_csv(".../integrated_data/2023_01_28_d160_rod_vs_d170_rod_dge.csv")
+
+background_exp_ctl <- X2023_01_28_d160_rod_vs_d170_rod_dge %>% dplyr::filter(pct.1>0.1 & pct.2>0.1)
+all_dge_merged_background_exp_ctl <- all_dge_merged %>% dplyr::filter(gene %in% background_exp_ctl$...1)
+```
+
+
+##all_dge_merged_background_exp_ctl
+```{r}
+cod_divrod_plot <- ggplot(data = all_dge_merged_background_exp_ctl, aes(x=D170Cod_D170Rod_FC, y=D160DivRod_D160Rod_FC, label=gene)) +
+  theme_cowplot() +
+      annotate("rect", xmin = -Inf, xmax = Inf, ymin = 1, ymax = Inf, fill= "#c51b7d", alpha = 0.5)  + 
+      annotate("rect", xmin = 1, xmax = Inf, ymin = -Inf, ymax = Inf , fill= "#b2182b",alpha = 0.5) + 
+      annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = -1, fill= "#4d9221",alpha = 0.5) + 
+      annotate("rect", xmin = -Inf, xmax = -1, ymin = -Inf, ymax = Inf, fill= "#2166ac",alpha = 0.5) + 
+  geom_label_repel(label = combo_filt$gene) + xlab(label = "Divergent Rod/Rod") + ylab(label = "Divergent Rod/Cone")
+  geom_point(color = "#878787", alpha=I(0.2)) +
+    geom_text_repel(data=subset(all_dge_merged_background_exp_ctl, abs(D170Cod_D170Rod_FC) > 1 | 
+                                  abs(D160DivRod_D160Rod_FC) > 1), max.overlaps = 10,
+                 aes(x=D170Cod_D170Rod_FC, y=D160DivRod_D160Rod_FC, label=gene)) +
+  geom_point(data=subset(all_dge_merged_background_exp_ctl, D170Cod_D170Rod_FC > 1 & 
+                                  abs(D160DivRod_D160Rod_FC) < 1),  
+             aes(x=D170Cod_D170Rod_FC, y=D160DivRod_D160Rod_FC), color = "#e41a1c") +
+  geom_point(data=subset(all_dge_merged_background_exp_ctl, D170Cod_D170Rod_FC < -1 & 
+                                  abs(D160DivRod_D160Rod_FC) < 1),  
+             aes(x=D170Cod_D170Rod_FC, y=D160DivRod_D160Rod_FC), color = "#377eb8") +
+  geom_point(data=subset(all_dge_merged_background_exp_ctl, abs(D170Cod_D170Rod_FC) < 1 & 
+                                  D160DivRod_D160Rod_FC > 1),  
+             aes(x=D170Cod_D170Rod_FC, y=D160DivRod_D160Rod_FC), color = "#4daf4a") +
+  geom_point(data=subset(all_dge_merged_background_exp_ctl, abs(D170Cod_D170Rod_FC) < 1 & 
+                                  D160DivRod_D160Rod_FC < -1),  
+             aes(x=D170Cod_D170Rod_FC, y=D160DivRod_D160Rod_FC), color = "#984ea3") +
+    labs(x = "Cod/Rod FC", y = "DivRod/Rod FC", title = "DivRod vs. Cod DEG Comparison") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+pdf(file = "all_dge_merged_background_exp_ctl_plot.pdf", width = 10, height = 7.5)
+cod_divrod_plot
+dev.off()
+
+cod_divrod_diff <- all_dge_merged_background %>% dplyr::filter((D170Cod_D170Rod_FC > 1 & abs(D160DivRod_D160Rod_FC) < 1) |
+                                         (D170Cod_D170Rod_FC < -1 & abs(D160DivRod_D160Rod_FC) < 1) |
+                                          (abs(D170Cod_D170Rod_FC) < 1 & D160DivRod_D160Rod_FC > 1) |
+                                          (abs(D170Cod_D170Rod_FC) <1 & D160DivRod_D160Rod_FC < -1))
+
+write.csv(x = cod_divrod_diff, file = "cod_divrod_diff.csv")
+```
+
+
+```{r}
+pdf(file = "comp.pdf", width = 10, height = 5)
+DimPlot(pr_filtered, split.by = "study", label = T) & NoLegend()
+dev.off()
+
+pdf(file = "comp_highlight.pdf", width = 10, height = 5)
+Cluster_Highlight_Plot(seurat_object = pr_filtered, cluster_name = c("div_rod", "cod"), split.by = "study", label = T, highlight_color = c("#4daf4a",
+    "#e41a1c")) & NoLegend()
+dev.off()
+```
+

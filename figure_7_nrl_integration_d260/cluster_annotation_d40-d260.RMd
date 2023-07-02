@@ -1,0 +1,391 @@
+---
+title: "nr2e3_cluster_anotation_ALL_tp"
+author: "Nate Mullin"
+date: "9/30/2022"
+output: html_document
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(tidyverse)
+library(EnhancedVolcano)
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+library(scCustomize)
+library(ComplexHeatmap)
+
+set.seed(1234)
+
+```
+
+#################################################################################
+###################### LOAD CCA OBJECT AND ADD METADATA #########################
+#################################################################################
+
+```{r fig.width=20, fig.height=8}
+# load the object using 25 PCA dimensions for UMAP and with stringent filtering
+# this is D40, D80, D120, D160, D260 CCA'd together with 25 dims and *stringent* qc cutoffs
+load(".../cca_all_tp_10092022/final_object.RData")
+
+# rename object
+organoid_all_tp <- IVR_object.combined
+
+# break out metadata
+timepoint <- ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D0"
+    ), "D0", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D40"
+    ), "D40", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D80"
+    ), "D80", ifelse(
+   str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D120"
+    ), "D120", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "D160"
+    ), "D160", "D260")))))
+
+line <- ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "B342cor"
+    ), "B342cor", ifelse(
+  str_detect(
+    organoid_all_tp[["orig.ident"]][["orig.ident"]], "B1427"
+    ), "B1427", "B342"))
+
+organoid_all_tp[["timepoint"]] <- timepoint
+organoid_all_tp[["line"]] <- line
+
+
+# re-order factors
+organoid_all_tp$line <- factor(organoid_all_tp$line, levels = c("B1427", "B342", "B342cor")) # order Rob suggested - WT first
+organoid_all_tp$timepoint <- factor(organoid_all_tp$timepoint, levels = c("D40", "D80", "D120", "D160", "D260")) # put in obvious order
+
+table(organoid_all_tp[["timepoint"]])
+
+# save object with metadata
+save(organoid_all_tp, file = "organoid_all_tp.RData")
+
+# print the unannotated UMAP split by line and timepoint
+pdf("unannotated_umaps.pdf", width=15, height=5)
+combo <- DimPlot(organoid_all_tp, shuffle = T, pt.size = 0.05)
+time<-DimPlot(organoid_all_tp, group.by = "timepoint", shuffle = T, pt.size = 0.05)
+line<-DimPlot(organoid_all_tp, group.by = "line", shuffle = T, pt.size = 0.05)
+ggarrange(combo, time, line, nrow = 1, ncol = 3)
+dev.off()
+```
+
+#################################################################################
+############################### Reference Mapping ###############################
+#################################################################################
+
+```{r}
+# sridhar fetal
+fetal_cca_59_82cP_125cp_res1.5_Glia <- readRDS(".../sridhar_data/uw_objects/fetal_cca_59_82cP_125cp_res1.5_Glia.RDS")
+
+#data from Voigt 2021
+load(".../2020_09_10_bullseye_manual_analysis.RData")
+bullseye <- IVR_object.combined
+
+# unselected donor choroid from Voigt 2020
+load(".../2020_06_04_rpechor_exp1_unselected_cca_manual_analysis.RData")
+unselected_rpecho <- IVR_object.combined
+
+```
+
+Merge all the references together
+```{r fig.width=15, fig.height=5}
+DefaultAssay(organoid_all_tp) <- "RNA"
+
+# first combine voigt 2021 and sridhar
+merged_ref_data <- merge(bullseye, y = fetal_cca_59_82cP_125cp_res1.5_Glia, add.cell.ids = c("bullseye", "fetal"), project = "merged_ref_data")
+
+# fix metadata
+# basically, if it celltype is not NA, use that, otherwise pull the sridhar "type" column
+# table(ifelse(!is.na(merged_ref_data$celltype), merged_ref_data$celltype, merged_ref_data$type))
+merged_ref_data$celltype <- ifelse(!is.na(merged_ref_data$celltype), 
+                                          merged_ref_data$celltype, merged_ref_data$type)
+
+# pull only RPE from unselected - it's 339 cells...
+rpe_only <- subset(IVR_object.combined, celltype == "RPE")
+table(fetal_cca_59_82cP_125cp_res1.5_Glia$type)
+
+# add RPE to merged reference
+merged_ref_data <- merge(merged_ref_data, y = rpe_only, add.cell.ids = c("merged", "rpe"), project = "merged_ref_data")
+
+# okay, there are repeated annotations between voigt and sridhar, will condense.
+Idents(merged_ref_data) <- "celltype"
+levels(merged_ref_data)
+
+new.cluster.ids <-c(
+"Cone"            , "RGC"          ,    "Glia"          , "Cone_ON_BC"    ,   "Cone_OFF_BC"  ,   
+"Amacrine"        , "Pericyte"     ,    "Endothelial"     , "Horizontal"    ,   "Rod"          ,   
+"Astrocyte"       , "Rod_BC"       ,    "Cone_OFF-BC-BC3A", "Microglia"     ,   "Progenitors"  ,   
+"PRC_Progenitor"    , "Amacrine"           ,    "T1_RGC"          , "Early Glia"    ,   "Horizontal"  ,   
+"Unknown"             , "T2"           ,    "Glia"            , "T1"            ,   "imGlia"       ,   
+"Photoreceptor"  , "T3"           ,    "Bipolars"        , "T2_T3"         ,   "RPE"   )
+
+names(new.cluster.ids) <- levels(merged_ref_data)
+merged_ref_data <- RenameIdents(merged_ref_data, new.cluster.ids)
+merged_ref_data$celltype <-  Idents(merged_ref_data)
+
+# save reference object
+save(merged_ref_data, file = "merged_ref_data.RData")
+
+# finally... kick out donor cell types that are not found in organoids (since RO are pure neuroectoderm.. i think)
+`%ni%` <- Negate(`%in%`)
+merged_ref_data <- subset(merged_ref_data, celltype %ni% c("Pericyte", "Endothelial", "Microglia", "Unknown", "Photoreceptor", "PRC_Progenitor"))
+
+# now we can do the label transfer!
+DefaultAssay(organoid_all_tp) <- "RNA"
+DefaultAssay(merged_ref_data) <- "RNA"
+
+common.features <- intersect(rownames(organoid_all_tp), rownames(merged_ref_data))
+length(x = common.features)
+
+# ugh ned to do this...
+merged_ref_data <- FindVariableFeatures(merged_ref_data)
+merged_ref_data <- ScaleData(merged_ref_data)
+merged_ref_data <- RunPCA(merged_ref_data)
+
+# find anchors between the fetal and organoid data
+anchors <- FindTransferAnchors(reference = merged_ref_data, 
+                               query = organoid_all_tp,
+                               dims = 1:30, reference.reduction = "pca",
+                               features = common.features, reduction = "pcaproject")
+
+
+# derive cell type predictions using anchors. Use Sridhar's annotations which include T1, T2, etc.
+predictions <- TransferData(anchorset = anchors, refdata = merged_ref_data$celltype,
+    dims = 1:30)
+
+# add predictions to organoid object and label as predicted.id
+organoid_all_tp <- AddMetaData(organoid_all_tp, metadata = predictions)
+Idents(organoid_all_tp) <- 'predicted.id'
+
+# print a plot showing prediction score
+pdf("merged_wRPE_pred_score_stringent.pdf", width=5, height=5)
+FeaturePlot(organoid_all_tp, features =  "prediction.score.max")
+dev.off()
+
+# print a vln plot showing prediction score
+pdf("merged_wRPE_pred_score_stringent_vln.pdf", width=10, height=5)
+VlnPlot(organoid_all_tp, features =  "prediction.score.max")
+dev.off()
+
+# so-called microglia are low prediction score which makes sense - drop everything under 0.25 to be safe.
+organoid_all_tp$donor_annotation <- ifelse(organoid_all_tp$prediction.score.max > 0.25, 
+                                                 organoid_all_tp$predicted.id, NA)
+
+Idents(organoid_all_tp) <- 'donor_annotation'
+
+#print UMAP
+pdf("dimplot_donor_annotation.pdf", width=5, height=5)
+DimPlot(organoid_all_tp, reduction = "umap", shuffle = T, label = T, group.by = "donor_annotation", ncol = 1) + NoLegend() + NoAxes()
+dev.off()
+
+# drop NA's
+organoid_all_tp <- subset(organoid_all_tp, donor_annotation != "NA")
+```
+
+##################################################################################
+############################### REFINE ANNOTATIONS ###############################
+##################################################################################
+
+An issue above is that Transition populations (by Sridhar) are being lost/misannotated by Voigt data... will try to fix manually by subclustering?
+
+PLAN: Merge T1,T3 -> then break out 
+```{r}
+# it looks like all Sridhar populations are jammed into T1 - try subclustering to find T2 and T3.
+DimPlot(subset(organoid_all_tp, donor_annotation == "T1"), label = T, split.by = "timepoint")
+
+
+levels(organoid_all_tp)
+
+new.cluster.ids <-c(
+"Glia"        ,     "T_PRC"         ,     "T_PRC"      ,       "Cone_OFF_BC"     , "Cone_ON_BC"  ,    
+"Amacrine"    ,     "Rod_BC"      ,     "Astrocyte" ,       "T2"              , "Early Glia"  ,    
+"RGC"         ,     "RPE"         ,     "T_PRC"        ,       "Cone_OFF-BC-BC3A", "Horizontal"  ,    
+"Progenitors" ,     "imGlia"      ,     "T_PRC"  )
+
+names(new.cluster.ids) <- levels(organoid_all_tp)
+organoid_all_tp <- RenameIdents(organoid_all_tp, new.cluster.ids)
+organoid_all_tp$donor_annotation <-  Idents(organoid_all_tp)
+
+# not sure what happened to old graph.. ?
+organoid_all_tp <- FindNeighbors(organoid_all_tp, reduction = "pca", dims = 1:25)
+
+Idents(organoid_all_tp) <- "donor_annotation"
+organoid_all_tp <- FindSubCluster(object = organoid_all_tp, cluster = "T_PRC", graph.name = "integrated_snn", algorithm = 3, resolution = 0.5)
+  # try using Leiden.
+
+# look for subclusters
+
+Idents(organoid_all_tp) <- "sub.cluster"
+DimPlot(organoid_all_tp, reduction = "umap", label = T)
+
+markers <- rev(c("HES6", "ATOH7", "DLL1", #T1
+                     "PRDM13", "HSPB1", #T2
+                     "DLL3", "OTX2", "FABP7", #T3
+                     "ARR3", "PDE6H",
+                      "RHO", "NRL", "NR2E3"
+))
+
+pdf(file = "sridhar_t_pop_marker_dot_plot.pdf", width = 15, height = 4)
+DotPlot_scCustom(organoid_all_tp, features = markers, flip_axes = T, x_lab_rotate = T)
+dev.off()
+
+levels(organoid_all_tp)
+table(organoid_all_tp$sub.cluster)
+
+new.cluster.ids <-c(
+"Glia"        , "Rod"         ,"Rod"    ,"Cone"  ,"Cone_OFF_BC"  ,   
+"Cone"     , "Cone_ON_BC"      ,"Cone"    ,"Amacrine" ,"Rod_BC"       ,   
+"Astrocyte"   , "Rod"         ,"T2"         ,"Rod" ,"Early Glia"   ,   
+"T3"     , "RGC"             ,"RPE"        ,"Rod" ,"T3"     ,   
+"T3"     , "Cone_OFF-BC-BC3A","Horizontal" ,"T3" ,"Progenitors"  ,   
+"T3"     , "T3"        ,"T1"    ,"imGlia"   ,"T1"     ,   
+"T2"    , "T3"        ,"T1"   ,"T3"   
+)
+
+names(new.cluster.ids) <- levels(organoid_all_tp)
+organoid_all_tp <- RenameIdents(organoid_all_tp, new.cluster.ids)
+organoid_all_tp$donor_annotation <-  Idents(organoid_all_tp)
+Idents(organoid_all_tp) <- "donor_annotation"
+
+DimPlot(organoid_all_tp, reduction = "umap", label = T)
+DimPlot(subset(organoid_all_tp, donor_annotation == "T3"), label = T)
+
+```
+
+Now do the same thing with the Photoreceptor population
+These definitely have some differentiated rods and cones. If impossible to tell will leave at "PRC_Progenitor"
+```{r}
+# it looks like all Sridhar populations are jammed into T1 - try subclustering to find T2 and T3.
+DimPlot(subset(organoid_all_tp, donor_annotation == "T3"), label = T) + NoLegend()
+
+# not sure what happened to old graph.. ?
+Idents(organoid_all_tp) <- "donor_annotation"
+organoid_all_tp <- FindSubCluster(object = organoid_all_tp, cluster = "Photoreceptor", graph.name = "integrated_nn", algorithm = 1, resolution = 0.05)
+  # try using Leiden.
+
+# look for subclusters
+
+Idents(organoid_all_tp) <- "sub.cluster"
+DimPlot(organoid_all_tp, reduction = "umap", label = T) + NoLegend()
+
+sridhar_markers <- rev(c("HES6", "ATOH7", "DLL1", #T1
+                     "PRDM13", "HSPB1", #T2
+                     "DLL3", "OTX2", "FABP7" #T3
+))
+
+pdf(file = "sridhar_t_pop_marker_dot_plot.pdf", width = 15, height = 3)
+DotPlot_scCustom(organoid_all_tp, features = sridhar_markers, flip_axes = T, x_lab_rotate = T)
+dev.off()
+
+levels(organoid_all_tp)
+
+new.cluster.ids <-c(
+"Glia"      ,       "Rod"        ,      "Cone"           ,  "Cone_OFF_BC"   ,  "Cone_ON_BC"   ,  
+"Rod_BC"    ,       "Astrocyte"  ,      "PRC_Progenitor"  , "Photoreceptor" ,  "Early Glia"   ,  
+"Amacrine"  ,       "RPE"        ,      "Horizontal",       "T3" ,            "Progenitors" ,   
+"Cone_OFF-BC-BC3A", "RGC"      ,        "T1"   ,        "T1"  ,           "T1"            ,
+"T3"       ,      "T3"         ,    "T1"       ,     "T2"        ,     "T3"            ,
+"T1"       ,     "T2"          ,   "T3"        ,    "T3"         ,   "T3"           ,
+"T3"       ,     "T3"          ,  "T3"         ,   "T1"          ,  "T1"           ,
+"T1"       ,      "imGlia"     ,      "T1"     ,       "T3"      ,      "T1"           ,
+"T3" )
+
+names(new.cluster.ids) <- levels(organoid_all_tp)
+organoid_all_tp <- RenameIdents(organoid_all_tp, new.cluster.ids)
+organoid_all_tp$donor_annotation <-  Idents(organoid_all_tp)
+
+DimPlot(organoid_all_tp, reduction = "umap", label = T)
+```
+
+CLEAN UP T3
+```{r}
+organoid_all_tp <- FindSubCluster(object = organoid_all_tp, cluster = "T3", graph.name = "integrated_nn", algorithm = 1, resolution = 0.05)
+  # try using Leiden.
+
+# look for subclusters
+
+Idents(organoid_all_tp) <- "sub.cluster"
+DimPlot(organoid_all_tp, reduction = "umap", label = T) + NoLegend()
+table(organoid_all_tp$sub.cluster)
+
+pdf(file = "donor_ann_clusters.pdf", width = 30,height = 30)
+DimPlot(organoid_all_tp, label = T, split.by = "sub.cluster", ncol = 5) + NoLegend()
+dev.off()
+
+
+pdf(file = "sridhar_t_pop_marker_dot_plot.pdf", width = 15, height = 3)
+DotPlot_scCustom(organoid_all_tp, features = sridhar_markers, flip_axes = T, x_lab_rotate = T)
+dev.off()
+
+levels(organoid_all_tp)
+
+new.cluster.ids <-c(
+ "Glia"          ,   "Rod"            ,  "Cone"          ,   "Cone_OFF_BC"    ,  "Cone_ON_BC"      ,
+ "Amacrine"      ,   "Rod_BC"         ,  "Astrocyte"     ,   "T2"             ,  "Early Glia"      ,
+ "Discard"          ,   "RGC"            ,  "RPE"           ,   "T3"           ,  "Cone_OFF-BC-BC3A",
+ "Horizontal"    ,   "Progenitors"    ,  "Discard"          ,   "T1"             ,  "Discard"            ,
+ "imGlia"        ,   "Discard"          ,  "Discard"          ,   "Discard"           ,  "Discard"            ,
+ "Discard"          ,   "Discard"           ,  "Discard"         ,   "Discard"     )
+
+names(new.cluster.ids) <- levels(organoid_all_tp)
+organoid_all_tp <- RenameIdents(organoid_all_tp, new.cluster.ids)
+organoid_all_tp$donor_annotation <-  Idents(organoid_all_tp)
+
+DimPlot(organoid_all_tp, reduction = "umap", label = T)
+
+```
+
+
+Reorder celltypes
+```{r}
+table(organoid_all_tp$donor_annotation)
+organoid_all_tp$donor_annotation <- factor(organoid_all_tp$donor_annotation, levels = rev(c("Progenitors", "T1", "T2","T3" ,"RGC" ,"Early Glia", "imGlia", "Glia", "Amacrine", "Astrocyte", "Horizontal", "RPE",  "Cone", "Rod", "Cone_OFF_BC", "Cone_OFF-BC-BC3A", "Cone_ON_BC", "Rod_BC", "Discard")))
+
+mutate(my_cols, factor(organoid_all_tp$donor_annotation))
+my_cols
+length(levels(organoid_all_tp$donor_annotation))
+
+levels(organoid_all_tp$donor_annotation)
+my_cols[1:19]
+show_col(my_cols[1:19])
+
+my_new_cols <- c("#666666", "#FB9A99", "#D95F02", "#1B9E77", "#7570B3",
+                 "#E31A1C", "#1F78B4", "#33A02C", "#66A61E", "#66C2A5",
+                 "#FF7F00", "#6A3D9A", "#E7298A", "#CAB2D6", "#B2DF8A",
+                 "#E6AB02", "#A6761D", "#FDBF6F", "#A6CEE3")
+
+rev(my_new_cols)
+```
+
+
+
+Finally print a table of stats
+```{r}
+cluster_stats <- Cluster_Stats_All_Samples(seurat_object = organoid_all_tp)
+write.csv(cluster_stats, file = "final_annotation_stats.csv", col.names = T, row.names = T)
+save(organoid_all_tp, file = "organoid_all_tp.RData")
+
+```
+
+
+```{r}
+table(organoid_all_tp$donor_annotation)
+
+organoid_all_tp <- subset(organoid_all_tp, donor_annotation != "Discard")
+save(organoid_all_tp, file = "organoid_all_tp_no_discard.RData")
+```
+

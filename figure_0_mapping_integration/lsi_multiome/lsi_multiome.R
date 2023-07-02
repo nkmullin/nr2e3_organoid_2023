@@ -2,34 +2,34 @@
 ##### READ LIBRARIES #####
 ##########################
 
-library(crayon, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(backports, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(withr, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(rstudioapi, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(cli, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(crayon)
+library(backports)
+library(withr)
+library(rstudioapi)
+library(cli)
 
-library(Seurat, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(Signac, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(Seurat)
+library(Signac)
 
-library(GenomeInfoDb, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(Biobase, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(AnnotationDbi, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(AnnotationFilter, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(GenomicFeatures, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(ensembldb, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(biovizBase, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(GenomeInfoDb)
+library(Biobase)
+library(AnnotationDbi)
+library(AnnotationFilter)
+library(GenomicFeatures)
+library(ensembldb)
+library(biovizBase)
 
-library(EnsDb.Hsapiens.v86, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(hdf5r, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(matrixStats, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(MatrixGenerics, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(SummarizedExperiment, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(EnsDb.Hsapiens.v86)
+library(hdf5r)
+library(matrixStats)
+library(MatrixGenerics)
+library(SummarizedExperiment)
 
-library(labeling, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(tidyverse, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(GenomicRanges, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(labeling)
+library(tidyverse)
+library(GenomicRanges)
 
-library(future, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(future)
 ## enable parallel-izaton
 options(future.globals.maxSize = 80 * 1024 ^ 3) # for 40 Gb RAM
 plan("multiprocess", workers = 10)
@@ -168,7 +168,7 @@ if(my_step == 1){
     seurat_obj <- CreateSeuratObject(object_assay,
                                      assay = "ATAC",
                                      meta.data = md,
-                                     min.features = 200 ## Nate changed 09272022
+                                     min.features = 200 
     )
 
     ### add dataset information
@@ -233,21 +233,6 @@ if(my_step == 1){
       for(column in 2:ncol(allele_coverage_md)){ ## start at 2, skip barcode
         objects_list[[i]][[colnames(allele_coverage_md)[column]]] <- allele_coverage_md[[column]]
       }
-
-    # ## create allele assay
-    # print("CREATING ALLELE ASSAY")
-    # variable.sites <- IdentifyVariants(objects_list[[i]], assay = "mito", refallele = mito.data$refallele)
-    # high.conf <- subset(
-    #   variable.sites, subset = n_cells_conf_detected >= 5 &
-    #     strand_correlation >= 0.65 #&
-    #     #vmr > 0.01
-    # )
-
-    # objects_list[[i]] <- AlleleFreq(
-    #   object = objects_list[[i]],
-    #   variants = high.conf$variant,
-    #   assay = "mito"
-    #  )
 
     }
 

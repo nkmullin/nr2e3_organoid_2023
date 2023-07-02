@@ -11,7 +11,7 @@ library(Seurat)
 ```
 
 ```{r}
-load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+load(".../phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
 DimPlot(organoid_prc_lineage)
 ```
 
@@ -76,10 +76,6 @@ dge_divrod_cone$gene <- rownames(dge_divrod_cone)
 
 combo <- dge_divrod_rod %>% left_join(y = dge_divrod_cone, by = "gene")
 
-dge_divrod_rod
-dge_divrod_cone
-combo$p_val_adj.x
-
 combo_filt <- dplyr::filter(combo, p_val_adj.x < 0.05 | p_val_adj.y < 0.05)
 
 
@@ -114,21 +110,4 @@ dev.off()
 ```
 
 
-
-
-```{r}
-phototrans_fig <- c("RHO", "GNAT1", "GNB1", "GNGT1", "PDE6A", "PDE6B", "PDE6G", "CNGA1", "CNGB1", "SAG", "OPN1SW", "GNAT2", "GNB3", "GNGT2", "PDE6C", "PDE6H", "CNGA3", "CNGB3", "ARR3")
-```
-
-```{r}
-divrod_only <- subset(organoid_prc_lineage, celltype_PHATEann == "DivRod")
-sample <- as.data.frame(rowMeans(divrod_only@assays$RNA@counts))
-sample$gene <- rownames(sample)
-mean1 <- sample %>% dplyr::filter(gene %in% phototrans_fig) %>% dplyr::filter(`rowMeans(divrod_only@assays$RNA@counts)` > 1)
-
-mean1
-
-sample
-
-```
 

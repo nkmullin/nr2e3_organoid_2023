@@ -26,16 +26,12 @@ set.seed(1234)
 #################################################################################
 
 ```{r fig.width=20, fig.height=8}
-# load the object using 25 PCA dimensions for UMAP and with stringent filtering
-  # stuff called "stringent" before 28 JULY was actually NOT!!
-load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/cca_stringent_25dims_noIPSC_09302022/final_object.RData")
+# load the object
+load(".../final_object.RData")
 
 # rename object
 organoid_all_tp <- IVR_object.combined
 
-# look at counts
-## lower counts in D0.. losing cells through feature cutoff. Look into...
-table(organoid_all_tp$orig.ident)
 
 # break out metadata
 timepoint <- ifelse(
@@ -85,7 +81,7 @@ dev.off()
 
 load ref data set - use Sridhar et al (Reh Lab)
 ```{r}
-fetal_cca_59_82cP_125cp_res1.5_Glia <- readRDS("~/LSS/IVR/apvoigt/experiments/sc-rna-seq/ipsc_robot/sridhar_data/uw_objects/fetal_cca_59_82cP_125cp_res1.5_Glia.RDS")
+fetal_cca_59_82cP_125cp_res1.5_Glia <- readRDS(".../sridhar_data/uw_objects/fetal_cca_59_82cP_125cp_res1.5_Glia.RDS")
 ```
 
 For a first pass, try using the Reh Lab "fetal_cca_59_82cP_125cp_res1.5_Glia" dataset
@@ -233,36 +229,6 @@ image(
   xlab = "", ylab = "", xaxt = "n", yaxt = "n", bty = "n"
 )
 dev.off()
-
-
-# plot opsins
-pdf("opsin_genes_by_line.pdf", width=15, height=25)
-FeaturePlot_scCustom(organoid_all_tp, label = F, features = c("RHO", "OPN1SW", "OPN1MW", "OPN1LW", "OPN4"), split.by = "line", pt.size = 0.1) & NoLegend() & NoAxes()
-dev.off()
-
-pdf("nrl_nr2e3_rho_by_line_density.pdf", width=15, height=5)
-Plot_Density_Custom(seurat_object = subset(organoid_all_tp,line == "B342"), features = c("NRL", "NR2E3", "RHO"), pt.size = 0.1) & NoLegend() & NoAxes()
-dev.off()
-
-pdf("nrl_syndig1_rho_by_line_density.pdf", width=15, height=5)
-FeaturePlot(organoid_prc_lineage, features = c("NRL", "SYNDIG1"), pt.size = 0.1, reduction = "PHATE", blend = T) & NoLegend() & NoAxes()
-dev.off()
-
-DefaultAssay(organoid_prc_lineage) <- 
-pdf("syndig1vln.pdf", width=10, height=5)
-VlnPlot_scCustom(seurat_object = organoid_prc_lineage, features = c("SYNDIG1"), pt.size = 0, idents = c("Rod", "Cone", "DivRod"), split.by  = "celltype_PHATEann", group.by = "line")
-dev.off()
-
-VlnPlot_scCustom(seurat_object = organoid_prc_lineage, features = c("SYNDIG1"), idents = c("Rod", "Cone", "DivRod"), )
-
-
-p <- FeaturePlot(organoid_all_tp, label = F, features = c("NRL", "NR2E3", "RHO"), split.by = "line", pt.size = 0.1, combine = F)
-
-p
-
-for(i in 1:length(p)) {
-  p[[i]] <- p[[i]] + NoLegend() + NoAxes()
-}
 
 ```
 

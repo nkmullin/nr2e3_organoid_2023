@@ -1,16 +1,16 @@
-library(crayon, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(backports, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(withr, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(rstudioapi, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(cli, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(crayon)
+library(backports)
+library(withr)
+library(rstudioapi)
+library(cli)
 
-library(Seurat, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(Signac, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(Seurat)
+library(Signac)
 
-library(labeling, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(tidyverse, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(gridExtra, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
-library(hdf5r, lib.loc = "/Shared/IVR/apvoigt/programs/R-4.1.0/bin/PACKAGES/")
+library(labeling)
+library(tidyverse)
+library(gridExtra)
+library(hdf5r)
 
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -33,7 +33,6 @@ my_library_ids <- as.character(my_cellranger_csv[,2])
 
 my_save_path <- as.character(args[3])
 my_filter_csv <- read.csv(as.character(args[4]))
-#my_filter_csv <- read.csv("~/Desktop/filtering_criteria.csv")
 my_step <- as.numeric(args[5])
 
 

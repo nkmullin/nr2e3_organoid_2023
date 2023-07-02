@@ -21,7 +21,7 @@ library(phateR)
 library(ggplot2)
 library(readr)
 library(viridis)
-#library(Rmagic)
+library(Rmagic)
 library(slingshot)
 library(cowplot)
 library(ggpubr)
@@ -31,8 +31,6 @@ library(tradeSeq)
 library(scales)
 library(clusterExperiment)
 library(scCustomize)
-#BiocManager::install("tradeSeq")
-
 
 set.seed(1234)
 
@@ -40,17 +38,14 @@ set.seed(1234)
 
 ```{r}
  # load in the seurat object with UMAP
-load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/clusters_annotation/organoid_all_tp.RData")
-# load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
-
-# looks about right...
-DimPlot(organoid_all_tp, label = T) + NoLegend()
+load(".../organoid_all_tp.RData")
 ```
 
 
 
 ```{r fig.width=10, fig.height=10}
-# use this pipeline for taking counts from seurat object, running PHATE, and then putting PHATE embeddings back into seu object as a new reduction
+# use this pipeline for taking counts from seurat object, running PHATE, 
+# and then putting PHATE embeddings back into seu object as a new reduction
 # https://gist.github.com/jebard/cea2d161879203ca6e2aa05f32a031bf
 
 # first pull out the cells we know to be involved in photoreceptor development
@@ -60,31 +55,18 @@ organoid_prc_lineage <- subset(organoid_all_tp, subset = draft_celltype_v2 %in% 
                                                                                   "Rod", 
                                                                                   "Cone"))
 
-# run SCTransform... see how that works
-# one concern - is it better to do this on the PRC lineage subset or the whole dataset prior to subsetting...
+# run SCTransform...
 organoid_prc_lineage <- SCTransform(organoid_prc_lineage, verbose = TRUE)
 
 # pull out the SCT data
 seurat_data <- GetAssayData(organoid_prc_lineage, assay = "SCT")
 organoid_prc_lineage@assays$SCT@data
+
 ## reshape for input into PHATE
 phate_data_input <- t(seurat_data)
 
 # run PHATE
-phate_output <- phate(phate_data_input, knn=6, decay=40, t=120)
 phate_outputv2 <- phate(phate_data_input, knn=6, decay=50, t=100)
-phate_outputv3 <- phate(phate_data_input, knn=6, decay=45, t=110)
-phate_output_default <- phate(phate_data_input)
-phate_outputv4 <- phate(phate_data_input, knn=6, decay=60)
-phate_outputv6 <- phate(phate_data_input, knn=6, decay=60, t=120)
-phate_outputv7 <- phate(phate_data_input, knn=6, decay=25, t=100)
-
-
- phate_outputv3D <- phate(phate_data_input, knn=6, decay=50, t=100, ndim = 3)
-
-#phate_output2 <- phate(phate_data_input, knn=8, decay=40, init = phate_output) 
-
-#phate_output3 <- phate(phate_data_input, knn=9, decay=40, init = phate_output2) 
 
 
 ## quick sanity check of the phate embeddings
@@ -234,81 +216,7 @@ tiff("prc_lineage_dotplot.tiff", units="in", width=8, height=5, res=300)
 DotPlot(object = organoid_prc_lineage, features = prc_lineage_markers, group.by = "celltype_PHATEann", assay = "RNA") + theme(axis.text.x = element_text(angle = 90)) + scale_colour_gradient2(low = "#FFF5F0", mid = "#fb6a4a", high = "#67000d")
 dev.off()
 
-tiff("prc_lineage_vlnplot.tiff", units="in", width=12, height=12, res=300)
-VlnPlot(object = organoid_prc_lineage, features = prc_lineage_markers, group.by = "celltypev1_PHATEv2", assay = "RNA", pt.size = 0)
-dev.off()
-
-tiff("prc_lineage_vlnplot_split.tiff", units="in", width=20, height=12, res=300)
-VlnPlot(object = organoid_prc_lineage, features = prc_lineage_markers, group.by = "draft_celltype_PHATE", assay = "RNA", pt.size = 0, split.by = "line")
-dev.off()
-
-prc_lineage_d160_markers <- FindMarkers(subset(organoid_prc_lineage, timepoint == "D160"), ident.1 = "DivRod", only.pos = FALSE, min.pct = 0.1, logfc.threshold = 0.25, assay = "RNA")
-
-
-div_rod_d160_markers <- FindMarkers(subset(organoid_prc_lineage, timepoint == "D160"), ident.1 = "DivRod", only.pos = TRUE, min.pct = 0, logfc.threshold = 0, assay = "RNA")
-
-prc_lineage_d160_markers %>%
-    group_by(cluster) %>%
-    top_n(n = 10, wt = avg_log2FC) -> top10
-
-
-organoid_prc_lineage.small <- subset(subset(organoid_prc_lineage, timepoint == "D160"), downsample = 500)
-
-mapal <- colorRampPalette(RColorBrewer::brewer.pal(9,"RdBu"))(256)
-pdf("prc_d160_only_lineage_heatmap.pdf", width = 15, height = 10)
-DoHeatmap(object = organoid_prc_lineage.small, features = top10$gene, group.by = "celltype_PHATEann", assay = "RNA", raster = F) + NoLegend()+
-  scale_fill_gradientn(colours = rev(mapal))
-dev.off()
-
-write.csv(x = prc_lineage_d160_markers, file = "prc_lineage_d160_markers.csv")
-
-write.csv(x = prc_lineage_d160_markers, file = "stringent_div_rod_d160_markers.csv")
-
 ```
-
-
-
-# PLOT ANNOTATED PHATE BY CTL VS 342 19MAY 2023
-```{r}
-disease <- ifelse(
-  str_detect(
-    organoid_prc_lineage[["orig.ident"]][["orig.ident"]], "B342cor"
-    ), "control", ifelse(
-  str_detect(
-    organoid_prc_lineage[["orig.ident"]][["orig.ident"]], "B1427"
-    ), "control", "nr2e3-patient"))
-
-organoid_prc_lineage[["disease"]] <- disease
-levels(organoid_prc_lineage$celltype_PHATEann)
-phate_colors <- c("#FBEDEB", #eCone
-                  "#D4D0E6", #DivRod
-                  "#F7DCDA", #imCone
-                  "#EDACAA", #Cone
-                  "#F3D8CA", #eRod
-                  "#D63F39", #Rod
-                  "#B7D4E6", #t3
-                  "#5EAA5D", #t1
-                  "#E79F88", #imRod
-                  "#C5DDA2" #prog
-                  )
-
-
-
-Idents(organoid_prc_lineage) <- "celltype_PHATEann"
-
-pdf(file = "phate_split_disease_19may2023.pdf", width = 10, height = 5)
-DimPlot(object = organoid_prc_lineage, reduction = "PHATE", 
-        split.by = "disease", label = T, pt.size = 0.1, cols = phate_colors) & 
-  NoLegend()
-dev.off()
-
-table(organoid_prc_lineage$celltype_PHATEann, organoid_prc_lineage$disease)
-
-```
-
-
-
-
 
 ########################################
 ###### SLINGSHOT ON SEURAT OBJECT ######
@@ -416,402 +324,14 @@ save(sce, file = "fitGAM_obj.RData")
 
 ```
 
-# Association Test
-```{r}
-pseudotime_association <- associationTest(sce)
-head(pseudotime_association)
 
-pseudotime_association <- pseudotime_association %>% 
-  rownames_to_column("feature_id") %>% 
-  arrange(desc(waldStat))
-
-head(pseudotime_association)
-
-feature_id <- pseudotime_association$feature_id[[1]]
-plotSmoothers(sce, counts, gene = feature_id) + ggtitle(feature_id)
-
-FeaturePlot(organoid_prc_lineage, features = feature_id, min.cutoff = "q01", max.cutoff = "q99")
-
-feature_id <- pseudotime_association$feature_id[[2]]
-plotSmoothers(sce, counts, gene = feature_id) + ggtitle(feature_id)
-
-feature_id <- pseudotime_association$feature_id[[3]]
-plotSmoothers(sce, counts, gene = feature_id) + ggtitle(feature_id)
-
-```
-
-
-# Discovering progenitor marker genes
-```{r}
-# In order to discover marker genes of the progenitor or differentiated cell population, researchers may be interested in assessing differential expression between the progenitor cell population (i.e., the starting point of a lineage) with the differentiated cell type population (i.e., the end point of a lineage). The function startVsEndTest uses a Wald test to assess the null hypothesis that the average expression at the starting point of the smoother (progenitor population) is equal to the average expression at the end point of the smoother (differentiated population). The test basically involves a comparison between two smoother coefficients for every lineage. The function startVsEndTest performs a global test across all lineages by default (i.e. it compares the start and end positions for all lineages simultaneously), but you can also assess all lineages separately by setting lineages=TRUE. Below, we adopt an omnibus test across the two lineages.
-
-startRes <- startVsEndTest(sce, lineages = TRUE)
-startRes$gene <- rownames(startRes)
-cols <- c("#F69799", "#E21F26", "#CAC5E2")
-
-
-oStart_lin1 <- order(startRes$waldStat_lineage1, decreasing = TRUE) # cones
-oStart_lin2 <- order(startRes$waldStat_lineage2, decreasing = TRUE) # rods
-oStart_lin3 <- order(startRes$waldStat_lineage3, decreasing = TRUE) # div rods
-
-# plot the genes that differ in cone vs. rod progenitors
-top_markers <- startRes %>% subset(abs(waldStat_lineage2-waldStat_lineage1)>1000) %>% rownames()
-
-tiff(filename = "rod_v_cone_prog_startEndTest.tiff", units = "in", width = 10, height = 10, res = 600)
-ggplot(data = startRes, aes(x= waldStat_lineage1, y = waldStat_lineage2)) + 
-    geom_point(alpha = 0.1) + 
-    #geom_label_repel(data = filter(startRes, gene %in% top_markers), aes(label = gene)) +
-    xlab("Cone Lineage (1)") + ylab("Rod Lineage (2)")
-dev.off()
-
-# plot the genes that differ in cone vs. rod progenitors
-top_markers <- startRes %>% subset(abs(waldStat_lineage3-waldStat_lineage1)>1000) %>% rownames()
-
-tiff(filename = "rod_v_divRod_prog_startEndTest.tiff", units = "in", width = 10, height = 10, res = 600)
-ggplot(data = startRes, aes(x= waldStat_lineage3, y = waldStat_lineage2)) + 
-    geom_point(alpha = 0.1) + 
-    geom_label_repel(data = filter(startRes, gene %in% top_markers), aes(label = gene)) +
-    xlab("Div. Rod Lineage (3)") + ylab("Rod Lineage (2)")
-dev.off()
-
-
-
-sigGeneStart <- "DPYSL3"
-plotSmoothers(sce, counts, gene = sigGeneStart, curvesCol=c("#F69799", "#E21F26", "#CAC5E2")) + ggtitle(sigGeneStart) &  scale_color_manual(values = c("#F69799", "#E21F26", "#CAC5E2"))
-plotGeneCount(sds_phate, counts, gene = sigGeneStart, cols = cols)
-
-table(organoid_prc_lineage$celltype_PHATEann, organoid_prc_lineage$timepoint)
-
-```
-##########################################################
-################## DIFF END TEST #########################
-##########################################################
-```{r fig.width=10, fig.height=5}
-#tradeSeq can discover marker genes for the differentiated cell types by comparing the average expression between end points of the lineage-specific smoothers. This is implemented in the diffEndTest function. By default, diffEndTest performs a global test, testing the null hypothesis that the average expression at the endpoints is equal for all lineages using a multivariate Wald test. If more than two lineages are present, one can assess all pairwise comparisons using the pairwise=TRUE argument.
-
-# get end RES
-endRes <- diffEndTest(sce, pairwise=TRUE)
-endRes$gene <- rownames(endRes)
-
-# most interested in 2 vs 3
-o <- order(endRes$waldStat_2vs3, decreasing = TRUE)
-sigGene <- names(sce)[o[1]]
-plotSmoothers(sce, counts, sigGene)
-FeaturePlot(organoid_prc_lineage, reduction = "PHATE", features = sigGene, 
-                        order = T, pt.size = 0.1, max.cutoff = 'q99', min.cutoff = 'q01') +
-  xlim (c(-0.03, 0.05)) + 
-  ylim (c(-0.015, 0.015))
-
-# most interested in 1 vs 2 is normal cone vs rod
-o <- order(endRes$waldStat_1vs2, decreasing = TRUE)
-sigGene <- names(sce)[o[2]]
-plotSmoothers(sce, counts, sigGene)
-FeaturePlot(organoid_prc_lineage, reduction = "PHATE", features = sigGene, 
-                        order = F, pt.size = 0.1, max.cutoff = 'q99', min.cutoff = 'q01') +
-  xlim (c(-0.03, 0.05)) + 
-  ylim (c(-0.015, 0.015))
-
-write.csv(endRes, file = "diffEndTest_prc_lin.csv", row.names = T)
-
-
-
-tiff(filename = "rod_v_cone_prog_startEndTest.tiff", units = "in", width = 10, height = 10, res = 600)
-ggplot(data = startRes, aes(x= waldStat_lineage1, y = waldStat_lineage2)) + 
-    geom_point(alpha = 0.1) + 
-    geom_label_repel(data = filter(startRes, gene %in% top_markers), aes(label = gene)) +
-    xlab("Cone Lineage (1)") + ylab("Rod Lineage (2)")
-dev.off()
-
-top_markers <- endRes %>% subset(abs(waldStat_1vs3-waldStat_2vs3)>1000) %>% rownames()
-end_test_plot <- ggplot(data = endRes, aes(x= waldStat_1vs3, y = waldStat_2vs3)) + 
-    geom_point(alpha = 0.1) +
-    geom_label_repel(data = filter(endRes, gene %in% top_markers), aes(label = gene)) +
-    xlab("Cone vs Div Rod") + ylab("Rod vs Div Rod")
-
-
-pdf(file = "end_test_prc_plot.pdf", width = 10, height = 10)
-end_test_plot
-dev.off()
-
-pdf(file = "plot_smooth_NMSCE2.pdf", width = 10, height = 5)
-plotSmoothers(sce, counts, "NMSCE2")
-dev.off()
-
-pdf(file = "plot_smooth_GUK1.pdf", width = 10, height = 5)
-plotSmoothers(sce, counts, "GUK1")
-dev.off()
-
-pdf(file = "plot_smooth_gnat1.pdf", width = 10, height = 5)
-plotSmoothers(sce, counts, "GNAT1")
-dev.off()
-
-pdf(file = "plot_smooth_pax6.pdf", width = 10, height = 5)
-plotSmoothers(sce, counts, "PAX6")
-dev.off()
-
-pdf(file = "plot_smooth_atoh7.pdf", width = 10, height = 5)
-plotSmoothers(sce, counts, "ATOH7")
-dev.off()
-
-pdf(file = "plot_smooth_MKI67.pdf", width = 10, height = 5)
-plotSmoothers(sce, counts, "MKI67")
-dev.off()
-
-pdf(file = "plot_smooth_OPN1MW.pdf", width = 10, height = 5)
-plotSmoothers(sce, counts, "OPN1MW")
-dev.off()
-
-
-pdf(file = "syndig_feature.pdf", width = 10, height = 10)
-FeaturePlot_scCustom(seurat_object = organoid_prc_lineage, features = "SYNDIG1", reduction = "PHATE")  + xlim (c(-0.03, 0.05)) + ylim (c(-0.015, 0.015))  & NoAxes()
-dev.off()
-
-Plot_Density_Custom(seurat_object = organoid_prc_lineage, features = c("NRL"), reduction = "PHATE") + xlim (c(-0.03, 0.05)) + ylim (c(-0.015, 0.015))  & NoAxes()
-
-DimPlot_scCustom(seurat_object = organoid_all_tp)
-Cluster_Highlight_Plot(seurat_object = organoid_prc_lineage, cluster_name = "DivRod", highlight_color = "navy",
-    background_color = "lightgray", reduction = "PHATE")
-```
-
-
-
-```{r}
-
-
-DefaultAssay(organoid_prc_lineage) <- "RNA"
-FeatureScatter(object = organoid_prc_lineage, feature1 = "PEX5L", feature2 = "ROM1", group.by = "line")
-
-sc
-
-# Create Plots
-tiff(filename = "pex5l_rom1_feat_scat_celltype.tiff", width = 10, height = 30, units = "in", res = 600)
-Split_FeatureScatter(seurat_object = organoid_prc_lineage, feature1 = "PEX5L", feature2 = "ROM1", split.by = "celltype_PHATEann", num_columns = 2,
-    pt.size = 1)
-dev.off()
-DefaultAssay(organoid_prc_lineage) <- "RNA"
-
-pdf(file = "pex5l_rom1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "PEX5L", feature2 = "ROM1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-?FeatureScatter
-
-pdf(file = "pde6h_rom1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "PDE6H", feature2 = "ROM1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-pdf(file = "pde6h_GNAT1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "PDE6H", feature2 = "GNAT1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-pdf(file = "gngt2_rom1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "GNGT2", feature2 = "ROM1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-
-pdf(file = "NEDD4L_rom1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "NEDD4L", feature2 = "ROM1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-pdf(file = "dst_rom1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "DST", feature2 = "ROM1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-pdf(file = "arr3_rom1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "ARR3", feature2 = "ROM1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-pdf(file = "pde6h_nrl_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "PDE6H", feature2 = "NRL", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-pdf(file = "pde6h_GNAT1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "PDE6H", feature2 = "GNAT1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-
-
-
-pdf(file = "pde6h_vopp1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "PDE6H", feature2 = "VOPP1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-
-NR1A2
-DefaultAssay(organoid_prc_lineage) <- "RNA"
-pdf(file = "arr3_nrl_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "ARR3", feature2 = "NRL", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-
-
-VlnPlot(organoid_prc_lineage, group.by = "celltype_PHATEann", features = "RXRG", assay = "RNA")
-
-```
-
-DEC 16 2022
-
-```{r}
-
-DefaultAssay(organoid_prc_lineage) <- "RNA"
-
-pdf(file = "pde6h_pde6afeat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "PDE6H", feature2 = "PDE6A", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T)
-dev.off()
-```
-
-
-
-#####################################################################################
-################## CLUSTERING OF GENES BASED ON EXP PATTERN #########################
-#####################################################################################
-```{r}
-# Clustering using RSEC, clusterExperiment
-
-# tradeSeq provides the functionality to cluster genes according to their expression pattern along the lineages with the clusterExpressionPatterns function. A number of equally spaced points for every lineage are selected to perform the clustering, and the number of points can be selected with the nPoints argument. The genes argument specifies which genes you want to cluster (e.g., all genes with differential expression patterns). Here, we use 20 points along each lineage to cluster the first 40 genes in the dataset. The clustering itself occurs by the clusterExperiment package (Risso et al. 2018), hence the user may select any clustering algorithm that’s built into that package, or custom clustering algorithms implemented by the user. For a list of built-in clustering algorithms within clusterExperiment, run clusterExperiment::listBuiltInFunctions() on the command line.
-
-## CLUSTERING ##
-
-library(clusterExperiment)
-nPointsClus <- 100
-clusPat <- clusterExpressionPatterns(sce, nPoints = nPointsClus,
-                                     genes = var_feats[1:500]) # use variable features
-
-
-clusterLabels <- primaryCluster(clusPat$rsec)
-
-cUniq <- unique(clusterLabels)
-cUniq <- cUniq[!cUniq == -1] # remove unclustered genes
-cUniq
-
-which(clusterLabels == cUniq[1])
-
-for (xx in cUniq) {
-  cId <- which(clusterLabels == xx)
-  p <- ggplot(data = data.frame(x = 1:nPointsClus,
-                                y = rep(range(clusPat$yhatScaled[cId, ]),
-                                        nPointsClus / 2)),
-              aes(x = x, y = y)) +
-    geom_point(alpha = 0) +
-    labs(title = paste0("Cluster ", xx),  x = "Pseudotime", y = "Normalized expression") +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5))
-  for (ii in 1:length(cId)) {
-    geneId <- rownames(clusPat$yhatScaled)[cId[ii]]
-    p <- p +
-      geom_line(data = data.frame(x = rep(1:nPointsClus, 3),
-                                  y = clusPat$yhatScaled[geneId, ],
-                                  lineage = rep(0:2, each = nPointsClus)),
-                aes(col = as.character(lineage), group = lineage), lwd = 1.5)
-  }
-  p <- p + guides(color = FALSE) +
-    scale_color_manual(values = c("orange", "darkseagreen3", "red"),
-                       breaks = c("0", "1", "2"))  
-  print(p)
-}
-
-clusPat$rsec@metadata
-
-DimPlot(IVR_object.combined,)
-
-```
 
 pseudotime plots of genes
+
 ```{r}
 
-sds
 
 plotGeneCount(curve = sds, counts = organoid_prc_lineage@assays$RNA@counts, gene = "PDE6H")
-?plotGenePseudotime
 
 
 pdf(file = "PDE6H_smoothers.pdf", width = 8, height = 5)
@@ -907,29 +427,5 @@ SplitPseudoPlotter(cone_specific, "cone_specific")
 
 synapse_prog <- c("NEUROG1", "SYNDIG1")
 SplitPseudoPlotter(synapse_prog, "synapse_prog")
-
-
-
-```
-
-
-
-MODULE SCORE PLOTTING??
-
-```{r}
-
-DefaultAssay(organoid_prc_lineage) <- "RNA"
-
-pdf(file = "GUCA1B_GNGT1_feat_scat_celltype.pdf", width = 18, height = 5)
-Split_FeatureScatter(seurat_object = 
-                       subset(organoid_prc_lineage,celltype_PHATEann %in% c("Cone",
-                                                                            "DivRod",
-                                                                            "Rod")),
-                              feature1 = "GUCA1B", feature2 = "GNGT1", 
-                              split.by = "line", group.by = "celltype_PHATEann",
-                              num_columns = 3, pt.size = 1, #slot = "scale.data", 
-                     colors_use =  c("#CAC5E2", "#F69799", "#E21F26" ), jitter = T, shuffle = T, alpha_exp = 0.1)
-dev.off()
-
 ```
 

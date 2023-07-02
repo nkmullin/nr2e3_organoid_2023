@@ -19,17 +19,19 @@ library(scCustomize)
 
 ```{r}
 # load the annotated multimodal object
-load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/seurat_downstream/wnn_analysis/multimodal_object_02382023.RData")
+load(".../wnn_analysis/multimodal_object_02382023.RData")
 
 # load the annotated (PHATE) scRNAseq object
-load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+load(".../phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
 
 DimPlot(multimodal_object)
 DimPlot(organoid_prc_lineage)
 
 ```
-  
-CREATE DIVROD MODULE
+############################
+#### CREATE PRC MODULES ####
+############################
+
 ```{r}
 
 DefaultAssay(organoid_prc_lineage) <- "RNA"

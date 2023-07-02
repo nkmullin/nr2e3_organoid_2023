@@ -23,19 +23,19 @@ library(scCustomize)
 ###########################################
 ```{r, fig.width=18, fig.height=6}
 # load CCA output
-load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/cca_03272023/final_object.RData")
+load(".../cca_03272023/final_object.RData")
 
 # load LSI/Signac output
-load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/lsi_03272023/integrated_final.RData")
+load(".../lsi_03272023/integrated_final.RData")
 
 CCA_object <- IVR_object.combined
 LSI_object <- integrated
 
 # add correct fragment paths to atac object
-FRAG_PATH1 <- "~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/jobs/S1_B342_D280/outs/atac_fragments.tsv.gz"
-FRAG_PATH2 <- "~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/jobs/S2_B342cor_D280/outs/atac_fragments.tsv.gz"
-FRAG_PATH3 <- "~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_organoid/cellranger_arc_runs/S7_B342_D160_ro/outs/atac_fragments.tsv.gz"
-FRAG_PATH4 <- "~/LSS//IVR/nkmullin/experiments/multiome/nr2e3_d160_organoid/cellranger_arc_runs/S8_B342cor_D160_ro/outs/atac_fragments.tsv.gz"
+FRAG_PATH1 <- ".../S1_B342_D280/outs/atac_fragments.tsv.gz"
+FRAG_PATH2 <- ".../S2_B342cor_D280/outs/atac_fragments.tsv.gz"
+FRAG_PATH3 <- ".../S7_B342_D160_ro/outs/atac_fragments.tsv.gz"
+FRAG_PATH4 <- ".../S8_B342cor_D160_ro/outs/atac_fragments.tsv.gz"
 
 
 FRAG_PATHS <- c(FRAG_PATH1, FRAG_PATH2, FRAG_PATH3, FRAG_PATH4)
@@ -308,7 +308,5 @@ multimodal_object[['gene_activity']] <- CreateAssayObject(counts = gene.activiti
  )
 
 save(multimodal_object, file = "multimodal_object_02382023.RData")
-
-
 ```
 
