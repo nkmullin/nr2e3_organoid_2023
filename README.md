@@ -12,6 +12,8 @@ While dysfunction and death of light-detecting photoreceptor cells underlie most
 
 <b>DATA EXPLORATION:</b></p>
  Please see the study of the same name on Spectacle (https://spectacle.ivr.uiowa.edu/app/spectacle/) to interact with all single-cell plots from the paper.
-<b> </b>
+  </li>
+
+  <li>
 <b>GRAPHICAL ABSTRACT:</b></p>
  <img src="extras/graphical_abstract.jpg" alt="Graphical Abstract" style="width:400px;" class="center">
