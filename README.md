@@ -1,15 +1,3 @@
-<!DOCTYPE html>
-<html>
-  
-<style>
-img {
-  display: block;
-  margin-left: auto;
-  margin-right: auto;
-}
-</style>
-
-<body>	
 # nr2e3_organoid_2023
 
 #  NR2E3 loss disrupts photoreceptor cell maturation and fate in human organoid models of retinal development.
@@ -24,7 +12,5 @@ code associated with Mullin, Bohrer, et al. 2023 (pending bioRxiv)
 <b>DATA EXPLORATION:</b></p>
  Please see the study of the same name on Spectacle (https://spectacle.ivr.uiowa.edu/app/spectacle/) to interact with all single-cell plots from the paper.
 
+<b>GRAPHICAL ABSTRACT:</b></p>
  <img src="extras/graphical_abstract.jpg" alt="Graphical Abstract" style="width:400px;" class="center">
- 
-</body>
-</html>
