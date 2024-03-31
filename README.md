@@ -1,3 +1,6 @@
+<!DOCTYPE html>
+<html>
+  
 <style>
 img {
   display: block;
