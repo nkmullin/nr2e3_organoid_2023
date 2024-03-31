@@ -1,0 +1,140 @@
+---
+title: "phate_plotting_correct_cols"
+author: "Nate Mullin"
+date: "2023-06-19"
+output: html_document
+---
+
+```{r}
+library(Seurat)
+library(scCustomize)
+library(tidyverse)
+library(RColorBrewer)
+library(cowplot)
+library(ggpubr)
+
+```
+
+
+```{r}
+load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+```
+
+
+```{r}
+levels(organoid_prc_lineage)
+
+phate_prc_cols <- c("#f8e1de", "#b9b3d5", "#f1c7c4", "#e1817f", "#ebc0ab","#e42129", "#3aa753", "#a6cfe5", "#ed8367", "#b9db94")
+
+pdf("flipped_celltype_PHATE_clusters_nr2e3_null_only.pdf", width=5, height=5)
+scCustomize::DimPlot_scCustom(seurat_object = subset(organoid_prc_lineage, line == "B342"), 
+                 label = F, group.by = "celltype_PHATEann", reduction = "PHATE",
+                colors_use =  phate_prc_cols, num_columns = 1, aspect_ratio = 1,
+                raster = T, raster.dpi = c(1000,1000), pt.size = 4) & 
+  NoLegend() & NoAxes()  &  scale_x_reverse()
+dev.off()
+
+
+pdf("flipped_celltype_PHATE_clusters.pdf", width=5, height=5)
+scCustomize::DimPlot_scCustom(seurat_object = organoid_prc_lineage, 
+                 label = F, group.by = "celltype_PHATEann", reduction = "PHATE",
+                colors_use =  phate_prc_cols, num_columns = 1, aspect_ratio = 1,
+                raster = T, raster.dpi = c(1000,1000), pt.size = 4) & 
+  NoLegend() & NoAxes()  &  scale_x_reverse()
+dev.off()
+
+
+pdf("flipped_celltype_PHATE_clusters_split_lines.pdf", width=15, height=5)
+scCustomize::DimPlot_scCustom(seurat_object = organoid_prc_lineage, 
+                 label = F, group.by = "celltype_PHATEann", reduction = "PHATE", split.by = "line",
+                colors_use =  phate_prc_cols, num_columns = 3, aspect_ratio = 1,
+                raster = T, raster.dpi = c(1000,1000), pt.size = 4) & 
+  NoLegend() & NoAxes()  &  scale_x_reverse()
+dev.off()
+
+
+pdf("flipped_timepoint_PHATE.pdf", width=5, height=5)
+scCustomize::DimPlot_scCustom(seurat_object = organoid_prc_lineage, 
+                 label = F, group.by = "timepoint", reduction = "PHATE",
+                colors_use =  brewer.pal(n = 4, name = "RdPu"), num_columns = 1, aspect_ratio = 1,
+                raster = T, raster.dpi = c(1000,1000), pt.size = 4) & 
+  NoLegend() & NoAxes()  &  scale_x_reverse()
+dev.off()
+```
+
+
+```{r}
+# fix order of levels
+organoid_prc_lineage$celltype_PHATEann <- factor(x = organoid_prc_lineage$celltype_PHATEann, levels = c("Progenitors", 
+                                                                                                              "T1",
+                                                                                                              "T3",
+                                                                                                              "eCone", "imCone", "Cone"    ,  
+                                                                                                              "eRod", "imRod", "Rod", "DivRod"))
+
+
+# plot counts
+cell_counts <- as.data.frame(table(organoid_prc_lineage$celltype_PHATEann, organoid_prc_lineage$line, organoid_prc_lineage$timepoint))
+cell_counts <- as_tibble(cell_counts)
+
+cell_counts <- cell_counts %>% dplyr::filter(Var3 != "D0")
+cell_props <- cell_counts %>%
+              group_by(Var2, Var3) %>%
+              mutate(prop = Freq/sum(Freq)*100)
+
+# reorder
+cell_props$Var3 <- factor(cell_props$Var3, levels=c("D40", "D80", "D120", "D160"))
+cell_props$Var1 <- factor(cell_props$Var1, levels=c("Progenitors", "T1", "T3", 
+                                                    "eCone", "imCone", "Cone", 
+                                                    "eRod", "imRod", "Rod", "DivRod"))
+
+cell_props <- cell_props %>% 
+       rename("Line" = "Var2")
+
+ct <- levels(cell_props$Var1)
+```
+
+
+```{r}
+plot <- ggplot(data=cell_props, aes(x=Var3, y = prop, colour = Line, group = Line)) + 
+  geom_line(size =2, alpha = 0.75) + 
+  ylim(0,70) +
+  facet_wrap(~Var1, ncol = 6, scales = "free") + 
+  scale_color_manual(values=rev(brewer.pal(name = "Dark2", n = 3))) + 
+  theme_classic() +
+  xlab(label = "Differentiation Day") + ylab(label = "Cell Type %") & NoLegend()
+
+plot
+
+pdf("prc_lin_phate_cell_type_by_time_same_y.pdf", width=12, height=4)
+plot
+dev.off()
+```
+
+
+```{r}
+plot <- ggplot(data=cell_props, aes(x=Var3, y = prop, colour = Line, group = Line)) + 
+  geom_line(size =1, alpha = 0.75) + 
+  geom_point(alpha = 0.75) + 
+  ylim(0,100) +
+  facet_wrap(~Var1, ncol = 3, strip.position = "top") + 
+  scale_color_manual(values=rev(brewer.pal(name = "Dark2", n = 3))) + 
+  theme_clean() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+
+  xlab(label = "Differentiation Day") + ylab(label = "Cell Type %")
+
+
+pdf("prc_lin_phate_cell_type_by_time_100_y.pdf", width=5, height=4)
+plot
+dev.off()
+```
+
+
+
+```{r}
+DimPlot(object = organoid_prc_lineage, group.by = )
+```
+
+
+
+
+

@@ -1,0 +1,63 @@
+---
+title: "plots_figure_1"
+author: "Nate Mullin"
+date: "2023-06-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(tidyverse)
+library(EnhancedVolcano)
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+library(scCustomize)
+
+set.seed(1234)
+```
+
+# load annotated object
+
+```{r}
+load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/clusters_annotation/organoid_all_tp.RData")
+```
+
+```{r}
+# remove D0
+organoid_all_tp <- subset(organoid_all_tp, timepoint != "D0")
+organoid_all_tp@meta.data$timepoint <- droplevels(organoid_all_tp@meta.data$timepoint)
+
+# set colors
+my_cols <- c(brewer.pal(n = 10, name = "Paired"), brewer.pal(n = 10, name = "Dark2"))
+# print dimplot split by timepoint
+DimPlot_scCustom(seurat_object = organoid_all_tp, label = F, group.by = "draft_celltype_v2", 
+        shuffle = T, colors_use =  my_cols, split.by = "timepoint", num_columns = 4, 
+        raster = T, raster.dpi = c(1000,1000), pt.size = 4, aspect_ratio = 1) & NoLegend() & NoAxes()
+
+pdf("d40_160_umap_split_time.pdf", width=20, height=6)
+DimPlot_scCustom(seurat_object = organoid_all_tp, label = F, group.by = "draft_celltype_v2", 
+        shuffle = T, colors_use =  my_cols, split.by = "timepoint", num_columns = 4, 
+        raster = T, raster.dpi = c(1000,1000), pt.size = 4, aspect_ratio = 1) & NoLegend() & NoAxes()
+dev.off()
+
+# print dimplot split by line
+DimPlot_scCustom(seurat_object = organoid_all_tp, label = F, group.by = "draft_celltype_v2",
+        shuffle = T, colors_use =  my_cols, split.by = "line", num_columns = 3, 
+        raster = T, raster.dpi = c(1000,1000), pt.size = 4, aspect_ratio = 1) & NoLegend() & NoAxes()
+
+pdf("d40_160_umap_split_line.pdf", width=20, height=6)
+DimPlot_scCustom(seurat_object = organoid_all_tp, label = F, group.by = "draft_celltype_v2",
+        shuffle = T, colors_use =  my_cols, split.by = "line", num_columns = 3, 
+        raster = T, raster.dpi = c(1000,1000), pt.size = 4, aspect_ratio = 1) & NoLegend() & NoAxes()
+dev.off()
+
+```
+
+
+```{r}
+sessionInfo()
+```
+
