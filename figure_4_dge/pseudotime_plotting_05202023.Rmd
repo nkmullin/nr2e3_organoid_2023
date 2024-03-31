@@ -1,0 +1,221 @@
+---
+title: "pseudotime_plotting_05202023"
+author: "Nate Mullin"
+date: "2023-05-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# using https://htmlpreview.github.io/?https%3A%2F%2Fgithub.com%2FKrishnaswamyLab%2FphateR%2Fblob%2Fmaster%2Finst%2Fexamples%2Fbonemarrow_tutorial.html=
+
+library(Seurat)
+library(sctransform)
+library(tidyverse)
+library(RColorBrewer)
+library(phateR)
+library(ggplot2)
+library(readr)
+library(viridis)
+#library(Rmagic)
+library(slingshot)
+library(cowplot)
+library(ggpubr)
+library(glmGamPoi)
+library(ggrepel)
+library(tradeSeq)
+library(scales)
+library(clusterExperiment)
+library(scCustomize)
+#BiocManager::install("tradeSeq")
+
+
+set.seed(1234)
+
+```
+
+```{r}
+ load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/fitGAM_obj.RData")
+ load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+```
+
+
+```{r}
+
+# decode slingshot lineages with prc_labeller() function
+names <- list(
+  "1"="Cone",
+  "2"="Rod",
+  "3"="Divergent Rod"
+)
+
+prc_labeller <- function(variable,value){
+  return(names[value])
+}
+
+# function to plot split pseduotime plots for sinlge gene
+SplitPseudoPlotter <- function(gene_symbol) { 
+  
+  plot <- plotSmoothers(models = sce, counts = organoid_prc_lineage@assays$RNA@counts, 
+                        gene = gene_symbol, curvesCols = c("#000000", "#000000", "#000000")) +
+    scale_color_manual(values = c("#F69799", "#E21F26", "#CAC5E2")) + NoLegend() + 
+    ylab(label = paste0(gene_symbol)) +
+    facet_wrap(~lineage,  labeller = prc_labeller)
+
+  pdf(file = paste0(gene_symbol,"_split_smoothers.pdf"), width = 6, height = 2)
+  print(plot)
+  dev.off()
+
+}
+
+
+SplitPseudoPlotter <- function(gene_symbol_vec, name) { # create a function with the name my_function
+
+  num_genes <- length(gene_symbol_vec) # get number of genes in list
+  plot_list <- list() # generate empty plot_list
+  
+  # define subfunction to return plots for each gene that will be assembled into list
+  SplitPseudoPlotter_Sub <- function(gene_symbol) { 
+    plot <- plotSmoothers(models = sce, counts = organoid_prc_lineage@assays$RNA@counts,
+                          gene = gene_symbol, curvesCols = c("#000000", "#000000", "#000000")) +
+      scale_color_manual(values = c("#F69799", "#E21F26", "#CAC5E2")) + NoLegend() + 
+      ylab(label = paste0(gene_symbol)) +
+      facet_wrap(~lineage,  labeller = prc_labeller)
+ 
+   return(plot) # subfunction returns a plot
+    }
+  
+  
+  plot_list <- lapply(gene_symbol_vec,SplitPseudoPlotter_Sub) # create list of plots for every gene in input list
+
+  pdf(file = paste0(name,"_split_smoothers.pdf"), width = 6, height = 2*num_genes)
+  print(ggarrange(plotlist = plot_list, ncol = 1, labels = "AUTO"))
+  dev.off()
+
+}
+
+
+summary(sce$crv$pseudotime.Lineage1)
+
+sce$crv$pseudotime.Lineage2
+
+
+sds@curves$Lineage1
+
+table(sds@curves$Lineage1$lambda, sds@curves$Lineage1$ord)
+
+```
+
+
+```{r}
+prog_specific <- c("PAX6", "LHX2", "HES1", "MKI67")
+SplitPseudoPlotter(prog_specific, "prog_specific")
+
+T1_specific <- c("GADD45A", "ATOH7", "RGS16", "GAL")
+SplitPseudoPlotter(T1_specific, "T1_specific")
+
+T3_specific <- c("FABP7", "DLL3")
+SplitPseudoPlotter(T3_specific, "T3_specific")
+
+PR_specific <- c("PRDM1", "RCVRN")
+SplitPseudoPlotter(PR_specific, "PR_specific")
+
+rod_specific <- c("NRL", "NR2E3", "GNAT1")t
+SplitPseudoPlotter(rod_specific, "rod_specific")
+
+cone_specific <- c("THRB", "OPN1SW", "PDE6H")
+SplitPseudoPlotter(cone_specific, "cone_specific")
+
+synapse_prog <- c("NEUROG1", "SYNDIG1")
+SplitPseudoPlotter(synapse_prog, "synapse_prog")
+
+divrod_spec <- c("DST", "CADPS", "NEDD4L", "AC112206.2", "PEX5L", "NDUFA4", "SERPINF1", "AC106798.1")
+SplitPseudoPlotter(divrod_spec, "divrod_spec")
+
+gnat1_pde6h_rho <- c("GNAT1", "PDE6H", "RHO")
+SplitPseudoPlotter(gnat1_pde6h_rho, "gnat1_pde6h_rho")
+
+```
+
+
+```{r}
+synaptogenesis_IPA <- c("APOE",
+                        "CDH4",
+                        "CDH12",
+                        "CDH18",
+                        "CDH20",
+                        "CNTNAP2",
+                        "CPLX2",
+                        "GRIA1",
+                        "NLGN1",
+                        "NLGN4X",
+                        "NLGN4Y",
+                        "NRXN3",
+                        "STXBP6",
+                        "SYN2",
+                        "SYT7")
+
+SplitPseudoPlotter(synaptogenesis_IPA, "synaptogenesis_IPA")
+
+
+
+phototrans_IPA <- c("ARR3",
+"CNGB3",
+"GNAT2",
+"GNGT2",
+"GUCA1B",
+"GUCA1C",
+"OPN1SW",
+"PDE6A",
+"PDE6C",
+"PDE6G",
+"PDE6H",
+"RHO",
+"SAG")
+
+SplitPseudoPlotter(phototrans_IPA, "phototrans_IPA")
+
+plot(reducedDim(sds), cols = lineages, pch = 16, cex = 0.5, main = i)
+
+
+cell_colors_clust <- cell_pal(organoid_prc_lineage$celltype_PHATEann, hue_pal())
+plot(reducedDim(sds), col = cell_colors_clust, pch = 16, cex = 0.5)
+lines(sds, lwd = 2, type = 'lineages', col = 'black')
+
+exp<-GetAssayData(organoid_prc_lineage, slot = "data")
+plotGenePseudotime(sds, "gene1", exp )
+
+
+organoid_prc_lineage$Cone_Trajectory <- slingPseudotime(sds)[,1]
+organoid_prc_lineage$Rod_Trajectory <- slingPseudotime(sds)[,2]
+organoid_prc_lineage$Divergent_Rod_Trajectory <- slingPseudotime(sds)[,3]
+
+FeaturePlot(organoid_prc_lineage, features = "lienage1_sds")
+
+my_levels <- rev(c("Progenitors", "T1", "T3", "eCone", "imCone", "Cone", "eRod", "imRod", "Rod", "DivRod"))
+#Relevel object@timepoint
+organoid_prc_lineage@meta.data$celltype_PHATEann <- factor(organoid_prc_lineage@meta.data$celltype_PHATEann, levels = my_levels)
+phate_prc_cols <- c("#f8e1de", "#b9b3d5", "#f1c7c4", "#e1817f", "#ebc0ab","#e42129", "#3aa753", "#a6cfe5", "#ed8367", "#b9db94")
+
+pdf(file = "pseudotime_by_phate_clust_vln.pdf", width = 15, height = 5)
+VlnPlot(object = organoid_prc_lineage, features = c("Cone_Trajectory", "Rod_Trajectory", "Divergent_Rod_Trajectory"), 
+        pt.size = 0, group.by = "celltype_PHATEann", cols = phate_prc_cols, )&
+    stat_summary(fun.y = median, geom='point', size = 10, colour = "black", shape = 124) &
+  coord_flip() & theme_linedraw() & NoLegend()
+dev.off()
+
+
+plots <- lapply(
+  X = plots,
+  FUN = function(p) p + ggplot2::scale_fill_manual(values = phate_prc_cols)
+)
+ 
+plots
+ 
+DefaultAssay(organoid_prc_lineage) <- "RNA"
+
+my_cols <- c(brewer.pal(10,"Set1"), brewer.pal(10,"Dark2"))
+
+FeatureScatter(object = organoid_prc_lineage, feature2 = "SAG", feature1 = "lienage2_sds", slot = "data",pt.size = 0.1,cols=alpha(my_cols,0.5),group.by = "celltype_PHATEann") |
+FeatureScatter(object = organoid_prc_lineage, feature2 = "SAG", feature1 = "lienage3_sds",slot = "data", pt.size = 0.1,cols=alpha(my_cols,0.5),group.by = "celltype_PHATEann")
+```
+

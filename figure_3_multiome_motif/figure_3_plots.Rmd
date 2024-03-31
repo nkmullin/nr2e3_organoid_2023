@@ -1,0 +1,217 @@
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(Signac)
+library(Seurat)
+library(patchwork)
+library(tidyverse)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(SummarizedExperiment)
+library(ggpubr)
+library(cowplot)
+library(ggrepel)
+
+# BiocManager::install("JASPAR2022")
+# BiocManager::install("TFBSTools")
+# BiocManager::install("motifmatchr")
+# BiocManager::install("GreenleafLab/chromVAR")
+# BiocManager::install("Herper")
+# library(Herper)
+
+# install_CondaTools(tools="macs2", env="PeakCalling_analysis")
+# 
+# source("https://bioconductor.org/biocLite.R")
+# biocLite("BiocInstaller")
+
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("JASPAR2022")
+
+
+library(JASPAR2022)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(EnhancedVolcano)
+install.packages("scCustomize")
+library(scCustomize)
+set.seed(1234)
+```
+
+
+
+```{r}
+load("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/seurat_downstream/motif/multimodal_object_macs2_peaks_03282023.RData")
+```
+
+```{r}
+levels(multimodal_object)
+
+multiome_cols <- c("#D74039", "#E7298A", "#EDAEAC", "#E1B74E", "#B2DF8A","#6F3E9E")
+
+
+pdf(file = "wnn_umap.pdf", width = 5, height = 5)
+DimPlot(multimodal_object, reduction = "wnn.umap", cols = multiome_cols) & NoLegend() & NoAxes()
+dev.off()
+```
+
+
+
+Plot DARs
+```{r}
+rod_da_peaks_B342cor_vs_B342 <- read_csv("~/LSS/IVR/nkmullin/experiments/multiome/nr2e3_d160_d280_organoid/seurat_downstream/motif/rod_da_peaks_B342cor_vs_B342.csv")
+
+
+obj <- rod_da_peaks_B342cor_vs_B342
+obj$delta.pct <- obj$pct.1 - obj$pct.2
+obj$peak <- obj$...1
+
+dpct_fc_plot <- ggplot(obj, aes(delta.pct, avg_log2FC)) + 
+  geom_point(color = "#bdbdbd", alpha=I(0.01)) +
+  geom_point(data=subset(obj, pct.1 > 0.1 & avg_log2FC > 0 & p_val_adj < 0.05),
+             aes(delta.pct,avg_log2FC,label = peak), color = "#b2182b",alpha=I(0.5)) + 
+  geom_point(data=subset(obj, pct.2 > 0.1 & avg_log2FC < 0 & p_val_adj < 0.05),
+             aes(delta.pct,avg_log2FC,label = peak), color  = "#2166ac",alpha=I(0.5)) + 
+  labs(x = "∆ Percent Expressed", y = "Log2 Fold Change", title = "Rod") +
+  theme(plot.title = element_text(hjust = 0.5)) + theme_bw() 
+
+dpct_fc_plot
+
+tiff(file = "rod_dar_used_in_motif_adjp05_pct0.1.tiff", width = 5, height = 5, res = 300, units = "in")
+dpct_fc_plot
+dev.off()
+
+pdf(file = "rod_dar_used_in_motif_adjp05_pct0.1.pdf", width = 5, height = 5)
+dpct_fc_plot
+dev.off()
+
+```
+
+
+
+
+ Pull up and down rod peaks into two lists
+```{r}
+sig_adj_rod_da_peaks <- subset(rod_da_peaks_B342cor_vs_B342, p_val_adj < 0.05)
+sig_adj_rod_da_peaks <- subset(sig_adj_rod_da_peaks, pct.1 > 0.1 |pct.2 > 0.1 )
+
+pos_peaks <- (sig_adj_rod_da_peaks[sig_adj_rod_da_peaks$avg_log2FC > 0,])$...1
+neg_peaks <- (sig_adj_rod_da_peaks[sig_adj_rod_da_peaks$avg_log2FC < 0,])$...1
+
+
+# match the overall GC content in the peak set
+multimodal_object <- RegionStats(multimodal_object, genome = BSgenome.Hsapiens.UCSC.hg38)
+open.peaks <- AccessiblePeaks(multimodal_object, idents = c("Rod"))
+meta.feature <- GetAssayData(multimodal_object, assay = "macs2_peaks", slot = "meta.features")
+
+save(meta.feature, file = "meta.feature.RData")
+
+pos.peaks.matched <- MatchRegionStats(
+  meta.feature = meta.feature[open.peaks, ],
+  query.feature = meta.feature[pos_peaks, ],
+  n = 50000
+)
+
+open_b342cor_motif <- FindMotifs(
+  object = multimodal_object,
+  features = pos_peaks, 
+  background = pos.peaks.matched
+)
+
+neg.peaks.matched <- MatchRegionStats(
+  meta.feature = meta.feature[open.peaks, ],
+  query.feature = meta.feature[neg_peaks, ],
+  n = 50000
+)
+
+open_b342_motif <- FindMotifs(
+  object = multimodal_object,
+  features = neg_peaks, 
+  background = neg.peaks.matched
+)
+
+save(pos.peaks.matched, file = "pos.peaks.matched.RData")
+save(open_b342cor_motif, file = "open_b342cor_motif.RData")
+save(neg.peaks.matched, file = "neg.peaks.matched.RData")
+save(open_b342_motif, file = "open_b342_motif.RData")
+```
+
+
+### MOTIF PLOTTING FUNCTION ###
+```{r}
+EnrichedMotifPlotter <- function(enriched_motif_df, tf_list) {
+  
+  tf_subset_up <- dplyr::filter(enriched_motif_df[[1]], motif.name %in% tf_list)
+  tf_subset_down <- dplyr::filter(enriched_motif_df[[2]], motif.name %in% tf_list)
+
+  enriched_motif_plot_up <- ggplot(data=tf_subset_up, aes(x=fold.enrichment, y=-log10(p.adjust), label=motif.name)) + theme_bw()+
+          geom_hline(yintercept=-log10(0.05),linetype="dashed", color = "red") + geom_vline(xintercept=1,linetype="dashed", color = "red") +
+          geom_point(data=tf_subset_up, aes(x=fold.enrichment,y=-log10(p.adjust))) + 
+          geom_label_repel(data = tf_subset_up, box.padding = 0.5, max.overlaps = 10, fill = "white") + 
+          scale_x_continuous(limits = c(0,NA)) + 
+          scale_y_continuous(limits = c(0, NA)) +
+          labs(x = "Fold Enrichment over Background", y="-log10(Adj. P Value)", title = paste("OPEN peaks in", enriched_motif_df[[3]], "vs.", enriched_motif_df[[4]], "in", paste(pr_motifs[[5]], collapse = ", ")))
+  
+    enriched_motif_plot_down <- ggplot(data=tf_subset_down, aes(x=fold.enrichment, y=-log10(p.adjust), label=motif.name)) + theme_bw()+
+          geom_hline(yintercept=-log10(0.05),linetype="dashed", color = "red") + geom_vline(xintercept=1,linetype="dashed", color = "red") +
+          geom_point(data=tf_subset_down, aes(x=fold.enrichment,y=-log10(p.adjust))) + 
+          geom_label_repel(data = tf_subset_down, box.padding = 0.5, max.overlaps = 10, fill = "white") + 
+          scale_x_continuous(limits = c(0,NA)) + 
+          scale_y_continuous(limits = c(0, NA)) +
+          labs(x = "Fold Enrichment over Background", y="-log10(Adj. P Value)", title = paste("CLOSED peaks in", enriched_motif_df[[3]], "vs.", enriched_motif_df[[4]], "in", paste(pr_motifs[[5]], collapse = ", ")))
+    
+    ggarrange(enriched_motif_plot_up, enriched_motif_plot_down)
+}
+```
+
+```{r, fig.width=6, fig.height=3}
+tf_subset_up <- dplyr::filter(open_b342cor_motif, motif.name %in% c("Nr2e3", "NRL"))
+
+enriched_motif_plot_up <- ggplot(data=open_b342cor_motif, aes(x=fold.enrichment, y=-log10(pvalue), label=motif.name)) + theme_bw() +
+          geom_point(data=open_b342cor_motif, 
+                     aes(x=fold.enrichment,y=-log10(pvalue)), colour = "gainsboro") + 
+          geom_point(data=tf_subset_up, 
+                     aes(x=fold.enrichment,y=-log10(pvalue)), colour = "red") + 
+  geom_hline(yintercept=-log10(0.05),linetype="dashed", color = "red") + 
+  geom_vline(xintercept=2,linetype="dashed", color = "red") +
+          geom_label_repel(data = tf_subset_up, box.padding = 0.5, max.overlaps = 10, fill = "white") + 
+          scale_x_continuous(limits = c(0,NA)) + 
+          scale_y_continuous(limits = c(0, NA)) +
+          labs(x = "Fold Enrichment over Background", y="-log10(Adj. P Value)", title = paste("OPEN peaks in", "B342Cor", "vs.", "B342", "in", "Rod", collapse = ", "))
+
+tiff(filename = "nrl_nr2e3_motif_enrichment_openB342cor.tiff", width = 5, height = 5, units = "in", res = 300)
+enriched_motif_plot_up
+dev.off()
+
+pdf(file = "nrl_nr2e3_motif_enrichment_openB342cor.pdf", width = 5, height = 5)
+enriched_motif_plot_up
+dev.off()
+```
+
+
+
+```{r}
+tf_subset_down <- dplyr::filter(open_b342_motif, motif.name %in% c("Nr2e3", "NRL"))
+
+enriched_motif_plot_down <- ggplot(data=open_b342_motif, aes(x=fold.enrichment, y=-log10(pvalue), label=motif.name)) + theme_bw() +
+          geom_point(data=open_b342_motif, 
+                     aes(x=fold.enrichment,y=-log10(pvalue)), colour = "gainsboro") + 
+          geom_point(data=tf_subset_down, 
+                     aes(x=fold.enrichment,y=-log10(pvalue)), colour = "red") + 
+  geom_hline(yintercept=-log10(0.05),linetype="dashed", color = "red") + 
+  geom_vline(xintercept=2,linetype="dashed", color = "red") +
+          geom_label_repel(data = tf_subset_down, box.padding = 0.5, max.overlaps = 10, fill = "white") + 
+          scale_x_continuous(limits = c(0,NA)) + 
+          scale_y_continuous(limits = c(0, NA)) +
+          labs(x = "Fold Enrichment over Background", y="-log10(Adj. P Value)", title = paste("OPEN peaks in", "B342Cor", "vs.", "B342", "in", "Rod", collapse = ", "))
+
+tiff(filename = "nrl_nr2e3_motif_enrichment_openB342cor.tiff", width = 5, height = 5, units = "in", res = 300)
+enriched_motif_plot_down
+dev.off()
+
+pdf(file = "nrl_nr2e3_motif_enrichment_openB342.pdf", width = 5, height = 5)
+enriched_motif_plot_down
+dev.off()
+```
+

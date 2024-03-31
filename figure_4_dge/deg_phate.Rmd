@@ -1,0 +1,136 @@
+---
+title: "deg_phate"
+author: "Nate Mullin"
+date: "2023-06-22"
+output: html_document
+---
+
+```{r}
+library(Signac)
+library(Seurat)
+```
+
+```{r}
+load("~/LSS/IVR/nkmullin/experiments/sc-rna-seq/nr2e3_ips_ro_timecourse/seurat_downstream/phate_pseudotime_trajectory/organoid_prc_lineage_only_PHATEann.RData")
+DimPlot(organoid_prc_lineage)
+```
+
+
+
+
+```{r}
+DefaultAssay(organoid_prc_lineage) <- "RNA"
+
+sample <- as.data.frame(rowMeans(organoid_prc_lineage@assays$RNA@counts))
+mean1 <- sample %>% dplyr::filter(`rowMeans(organoid_prc_lineage@assays$RNA@counts)` > 1) %>% rownames()
+
+dge_divrod_rod <- FindMarkers(object = organoid_prc_lineage, ident.1 = "DivRod", ident.2 = "Rod", logfc.threshold = 0, min.pct = -Inf, features = mean1)
+dge_divrod_cone <- FindMarkers(object = organoid_prc_lineage, ident.1 = "DivRod", ident.2 = "Cone",  logfc.threshold = 0, min.pct = -Inf, features = mean1)
+
+dge_divrod_rod$gene <- rownames(dge_divrod_rod)
+write.csv(x = dge_divrod_rod, file = "dge_divrod_rod.csv")
+
+obj <- dge_divrod_rod
+obj$delta.pct <- obj$pct.1 - obj$pct.2
+obj$gene <- rownames(obj)
+dpct_fc_plot <- ggplot(obj, aes(delta.pct, avg_log2FC)) + 
+  geom_point(color = "#878787", alpha=I(0.2)) +
+  geom_point(data=subset(obj, delta.pct > 0.25 & avg_log2FC > 0.59),  # DELTA PCT > 0.25 AND logFC>1
+             aes(delta.pct,avg_log2FC,label = gene), color = "#b2182b") + 
+  geom_point(data=subset(obj, delta.pct < -0.25 & avg_log2FC < -0.59),
+             aes(delta.pct,avg_log2FC,label = gene), color  = "#2166ac") + 
+  geom_text_repel(data=subset(obj, abs(delta.pct) > 0.25 & abs(avg_log2FC) > 0.59), max.overlaps = 20,
+                  aes(delta.pct,avg_log2FC,label = gene)) + 
+  labs(x = expression(Delta~"Percent Expressed"), y = "Log2 Fold Change", title = "Divergent Rod/Rod") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+pdf(file = "divrod_rod_fc_dpct.pdf", width = 10, height = 10)
+dpct_fc_plot
+dev.off()
+
+
+obj <- dge_divrod_cone
+obj$delta.pct <- obj$pct.1 - obj$pct.2
+obj$gene <- rownames(obj)
+dpct_fc_plot <- ggplot(obj, aes(delta.pct, avg_log2FC)) + 
+  geom_point(color = "#878787", alpha=I(0.2)) +
+  geom_point(data=subset(obj, delta.pct > 0.25 & avg_log2FC > 0.59),  # DELTA PCT > 0.25 AND logFC>1
+             aes(delta.pct,avg_log2FC,label = gene), color = "#b2182b") + 
+  geom_point(data=subset(obj, delta.pct < -0.25 & avg_log2FC < -0.59),
+             aes(delta.pct,avg_log2FC,label = gene), color  = "#2166ac") + 
+  geom_text_repel(data=subset(obj, abs(delta.pct) > 0.25 & abs(avg_log2FC) > 0.59), max.overlaps = 20,
+                  aes(delta.pct,avg_log2FC,label = gene)) + 
+  labs(x = expression(Delta~"Percent Expressed"), y = "Log2 Fold Change", title = "Divergent Rod/Cone") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+pdf(file = "divrod_cone_fc_dpct.pdf", width = 10, height = 10)
+dpct_fc_plot
+dev.off()
+
+
+
+dge_divrod_rod$gene <- rownames(dge_divrod_rod)
+dge_divrod_cone$gene <- rownames(dge_divrod_cone)
+
+combo <- dge_divrod_rod %>% left_join(y = dge_divrod_cone, by = "gene")
+
+dge_divrod_rod
+dge_divrod_cone
+combo$p_val_adj.x
+
+combo_filt <- dplyr::filter(combo, p_val_adj.x < 0.05 | p_val_adj.y < 0.05)
+
+
+phototrans_genes <- c("ARR3", "CNGB3", "GNAT2", "GNGT2", "GUCA1B", "GUBA1C","OPN1SW", "PDE6A", "PDE6C", "PDE6G", "RHO", "SAG")
+
+
+plot <- combo_filt %>% ggplot(aes(x = avg_log2FC.x, y = avg_log2FC.y))+
+  theme_cowplot() +
+      annotate("rect", xmin = -1, xmax = 1, ymin = 1, ymax = Inf, fill= "#fbb4ae", alpha = 0.5)  + 
+      annotate("rect", xmin = 1, xmax = Inf, ymin = -1, ymax = 1 , fill= "#b3cde3",alpha = 0.5) + 
+      annotate("rect", xmin = -1, xmax = 1, ymin = -Inf, ymax = -1, fill= "#ccebc5",alpha = 0.5) + 
+      annotate("rect", xmin = -Inf, xmax = -1, ymin = -1, ymax = 1, fill= "#decbe4",alpha = 0.5) + 
+  geom_point() +
+  geom_label_repel(label = combo_filt$gene) + xlab(label = "Divergent Rod/Rod") + ylab(label = "Divergent Rod/Cone")
+
+pdf("fc_vs_fc_plot.pdf", width = 10, height = 10)
+plot
+dev.off()
+
+plot <- combo_filt %>% ggplot(aes(x = avg_log2FC.x, y = avg_log2FC.y))+
+  theme_cowplot() +
+      annotate("rect", xmin = -Inf, xmax = Inf, ymin = 1, ymax = Inf, fill= "#c51b7d", alpha = 0.5)  + 
+      annotate("rect", xmin = 1, xmax = Inf, ymin = -Inf, ymax = Inf , fill= "#b2182b",alpha = 0.5) + 
+      annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = -1, fill= "#4d9221",alpha = 0.5) + 
+      annotate("rect", xmin = -Inf, xmax = -1, ymin = -Inf, ymax = Inf, fill= "#2166ac",alpha = 0.5) + 
+  geom_point() +
+  geom_label_repel(label = combo_filt$gene) + xlab(label = "Divergent Rod/Rod") + ylab(label = "Divergent Rod/Cone")
+
+pdf("fc_vs_fc_plot.pdf", width = 10, height = 10)
+plot
+dev.off()
+
+write.csv(combo_filt, "combo_filt.csv")
+```
+
+
+
+
+```{r}
+phototrans_fig <- c("RHO", "GNAT1", "GNB1", "GNGT1", "PDE6A", "PDE6B", "PDE6G", "CNGA1", "CNGB1", "SAG", "OPN1SW", "GNAT2", "GNB3", "GNGT2", "PDE6C", "PDE6H", "CNGA3", "CNGB3", "ARR3")
+```
+
+```{r}
+divrod_only <- subset(organoid_prc_lineage, celltype_PHATEann == "DivRod")
+sample <- as.data.frame(rowMeans(divrod_only@assays$RNA@counts))
+sample$gene <- rownames(sample)
+mean1 <- sample %>% dplyr::filter(gene %in% phototrans_fig) %>% dplyr::filter(`rowMeans(divrod_only@assays$RNA@counts)` > 1)
+
+mean1
+
+sample
+
+```
+
