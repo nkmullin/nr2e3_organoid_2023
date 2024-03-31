@@ -1,7 +1,7 @@
 # nr2e3_organoid_2023
 
 #  NR2E3 loss disrupts photoreceptor cell maturation and fate in human organoid models of retinal development.
-code associated with Mullin, Bohrer, et al. 2023 (pending bioRxiv)
+code associated with Mullin, Bohrer, et al. 2024 (pending bioRxiv)
 
 <b>TITLE:</b></p>
 NR2E3 loss disrupts photoreceptor cell maturation and fate in human organoid models of retinal development.
